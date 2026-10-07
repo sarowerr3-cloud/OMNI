@@ -62,6 +62,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<{
     query: string;
     rate_rmb_bdt: number;
@@ -76,7 +77,10 @@ export default function Home() {
     fetch(`${apiUrl}/health`)
       .then((res) => res.json())
       .then((data) => setHealth(data))
-      .catch((err) => console.error('API health fetch failed:', err));
+      .catch((err) => {
+        console.error('API health fetch failed:', err);
+        setHealth({ status: 'offline' });
+      });
   }, [apiUrl]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -85,6 +89,11 @@ export default function Home() {
       setSelectedFile(file);
       setPreviewUrl(URL.createObjectURL(file));
     }
+  };
+
+  const formatMoney = (val: number | undefined | null): string => {
+    if (val === undefined || val === null || isNaN(val)) return '0';
+    return Number(val).toLocaleString();
   };
 
   const handleSearch = async (e?: React.FormEvent) => {
@@ -97,6 +106,8 @@ export default function Home() {
     }
 
     setLoading(true);
+    setErrorMessage(null);
+
     try {
       if (searchMode === 'text') {
         const res = await fetch(`${apiUrl}/search`, {
@@ -104,18 +115,22 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             query,
-            quantity: Number(quantity),
+            quantity: Number(quantity) || 10,
             shipping_method: shippingMethod,
             user_weight_kg: weightKg ? Number(weightKg) : null,
             rate_rmb_bdt: rateRmbBdt ? Number(rateRmbBdt) : 16.50,
           }),
         });
+
+        if (!res.ok) {
+          throw new Error(`Server returned status ${res.status}`);
+        }
         const data = await res.json();
         setSearchResults(data);
       } else {
         const formData = new FormData();
         formData.append('file', selectedFile!);
-        formData.append('quantity', String(quantity));
+        formData.append('quantity', String(quantity || 10));
         formData.append('shipping_method', shippingMethod);
         if (weightKg) formData.append('user_weight_kg', weightKg);
         if (rateRmbBdt) formData.append('rate_rmb_bdt', rateRmbBdt);
@@ -124,15 +139,24 @@ export default function Home() {
           method: 'POST',
           body: formData,
         });
+
+        if (!res.ok) {
+          throw new Error(`Server returned status ${res.status}`);
+        }
         const data = await res.json();
         setSearchResults(data);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Search failed:', err);
+      setErrorMessage(err.message || 'Failed to connect to backend search service.');
     } finally {
       setLoading(false);
     }
   };
+
+  const sourcingResults = searchResults?.sourcing_results || [];
+  const bdBenchmarks = searchResults?.bd_market_benchmarks || [];
+  const firstAnalysis = sourcingResults[0]?.market_analysis;
 
   return (
     <div style={{ minHeight: '100vh', background: '#09090b', color: '#f8fafc', padding: '1.5rem 1rem' }}>
@@ -202,6 +226,23 @@ export default function Home() {
 
       {/* Main Container */}
       <main style={{ maxWidth: '1100px', margin: '0 auto' }}>
+        {/* Error Alert Banner */}
+        {errorMessage && (
+          <div
+            style={{
+              background: '#450a0a',
+              border: '1px solid #dc2626',
+              color: '#fca5a5',
+              padding: '1rem',
+              borderRadius: '12px',
+              marginBottom: '1.5rem',
+              fontSize: '0.9rem',
+            }}
+          >
+            ⚠️ <strong>Error:</strong> {errorMessage}
+          </div>
+        )}
+
         {/* Search Mode Selector & Panel */}
         <section
           style={{
@@ -455,7 +496,7 @@ export default function Home() {
         {searchResults && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
             {/* Gemini Vision Analysis Banner (if image search) */}
-            {searchResults.image_analysis && (
+            {searchResults?.image_analysis && (
               <div
                 style={{
                   background: '#18181b',
@@ -473,10 +514,10 @@ export default function Home() {
                     Gemini Vision AI Image Identification
                   </h4>
                   <p style={{ fontSize: '0.85rem', color: '#e2e8f0' }}>
-                    {searchResults.image_analysis.description_en}
+                    {searchResults.image_analysis?.description_en}
                   </p>
                   <p style={{ fontSize: '0.75rem', color: '#a1a1aa', marginTop: '2px' }}>
-                    Identified Keywords: {searchResults.image_analysis.keywords_en?.join(', ')}
+                    Identified Keywords: {searchResults.image_analysis?.keywords_en?.join(', ') || 'N/A'}
                   </p>
                 </div>
               </div>
@@ -485,11 +526,11 @@ export default function Home() {
             {/* 1. Sourcing Listings & Landed Cost Breakdown */}
             <div>
               <h2 style={{ fontSize: '1.25rem', color: '#ffffff', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ color: '#dc2626' }}>🇨🇳</span> Sourcing Suppliers & Landed Cost (Rate: 1 RMB = {searchResults.rate_rmb_bdt} Tk / BDT)
+                <span style={{ color: '#dc2626' }}>🇨🇳</span> Sourcing Suppliers & Landed Cost (Rate: 1 RMB = {searchResults?.rate_rmb_bdt ?? 16.5} Tk / BDT)
               </h2>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
-                {searchResults.sourcing_results.map((res, idx) => (
+                {sourcingResults.map((res, idx) => (
                   <div
                     key={idx}
                     style={{
@@ -524,40 +565,40 @@ export default function Home() {
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                         <span style={{ fontWeight: 700, color: '#dc2626', fontSize: '0.9rem' }}>
-                          {res.product.platform}
+                          {res.product?.platform}
                         </span>
                         <span style={{ color: '#a1a1aa', fontSize: '0.8rem' }}>
-                          MOQ: {res.product.moq} pcs
+                          MOQ: {res.product?.moq || 1} pcs
                         </span>
                       </div>
 
                       <h3 style={{ fontSize: '1rem', color: '#f8fafc', marginBottom: '0.75rem', lineHeight: 1.4 }}>
-                        {res.product.title_en || res.product.title_original}
+                        {res.product?.title_en || res.product?.title_original}
                       </h3>
 
                       <div style={{ background: '#09090b', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                           <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Supplier Price:</span>
                           <span style={{ fontWeight: 700, color: '#f8fafc' }}>
-                            {res.product.currency === 'RMB' ? `¥${res.product.price} RMB` : `$${res.product.price} USD`}
+                            {res.product?.currency === 'RMB' ? `¥${res.product?.price} RMB` : `$${res.product?.price} USD`}
                           </span>
                         </div>
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                           <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Total Item Price:</span>
                           <span style={{ fontWeight: 600, color: '#f8fafc' }}>
-                            ৳{res.cost_breakdown.item_price_bdt.toLocaleString()} Tk / BDT
+                            ৳{formatMoney(res.cost_breakdown?.item_price_bdt)} Tk / BDT
                           </span>
                         </div>
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                           <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Freight ({shippingMethod.toUpperCase()}):</span>
-                          <span>৳{res.cost_breakdown.international_freight_bdt.toLocaleString()} Tk / BDT</span>
+                          <span>৳{formatMoney(res.cost_breakdown?.international_freight_bdt)} Tk / BDT</span>
                         </div>
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                           <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Duty & Tax (15%):</span>
-                          <span>৳{res.cost_breakdown.duty_vat_bdt.toLocaleString()} Tk / BDT</span>
+                          <span>৳{formatMoney(res.cost_breakdown?.duty_vat_bdt)} Tk / BDT</span>
                         </div>
 
                         <hr style={{ borderColor: '#27272a', margin: '6px 0' }} />
@@ -565,13 +606,13 @@ export default function Home() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '1.05rem' }}>
                           <span style={{ color: '#ffffff' }}>Landed Cost / Unit:</span>
                           <span style={{ color: '#38bdf8' }}>
-                            ৳{res.cost_breakdown.per_unit_landed_cost.toLocaleString()} Tk / BDT
+                            ৳{formatMoney(res.cost_breakdown?.per_unit_landed_cost)} Tk / BDT
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    {res.product.url && (
+                    {res.product?.url && (
                       <a
                         href={res.product.url}
                         target="_blank"
@@ -603,7 +644,7 @@ export default function Home() {
               </h2>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-                {searchResults.bd_market_benchmarks.map((bm, idx) => (
+                {bdBenchmarks.map((bm, idx) => (
                   <div
                     key={idx}
                     style={{
@@ -625,7 +666,7 @@ export default function Home() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Local Selling Price:</span>
                       <span style={{ color: '#22c55e', fontWeight: 800, fontSize: '1.1rem' }}>
-                        ৳{bm.price_bdt.toLocaleString()} Tk / BDT
+                        ৳{formatMoney(bm.price_bdt)} Tk / BDT
                       </span>
                     </div>
                     {bm.notes && <p style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '6px' }}>{bm.notes}</p>}
@@ -634,7 +675,7 @@ export default function Home() {
               </div>
 
               {/* OMNI Profit & Margin Overview Card */}
-              {searchResults.sourcing_results.length > 0 && (
+              {firstAnalysis && (
                 <div
                   style={{
                     background: 'linear-gradient(135deg, #18181b 0%, #271418 100%)',
@@ -652,28 +693,28 @@ export default function Home() {
                     <div style={{ background: '#09090b', padding: '1rem', borderRadius: '10px' }}>
                       <p style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>Average Local Retail Price</p>
                       <p style={{ fontSize: '1.3rem', fontWeight: 800, color: '#ffffff', marginTop: '4px' }}>
-                        ৳{searchResults.sourcing_results[0].market_analysis.local_bd_market_avg_price.toLocaleString()} <span style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>Tk / BDT</span>
+                        ৳{formatMoney(firstAnalysis.local_bd_market_avg_price)} <span style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>Tk / BDT</span>
                       </p>
                     </div>
 
                     <div style={{ background: '#09090b', padding: '1rem', borderRadius: '10px' }}>
                       <p style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>Est. Net Profit / Unit</p>
                       <p style={{ fontSize: '1.3rem', fontWeight: 800, color: '#22c55e', marginTop: '4px' }}>
-                        ৳{searchResults.sourcing_results[0].market_analysis.estimated_net_profit.toLocaleString()} <span style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>Tk / BDT</span>
+                        ৳{formatMoney(firstAnalysis.estimated_net_profit)} <span style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>Tk / BDT</span>
                       </p>
                     </div>
 
                     <div style={{ background: '#09090b', padding: '1rem', borderRadius: '10px' }}>
                       <p style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>Gross Margin %</p>
                       <p style={{ fontSize: '1.3rem', fontWeight: 800, color: '#38bdf8', marginTop: '4px' }}>
-                        {searchResults.sourcing_results[0].market_analysis.gross_margin_percent}%
+                        {firstAnalysis.gross_margin_percent ?? 0}%
                       </p>
                     </div>
 
                     <div style={{ background: '#09090b', padding: '1rem', borderRadius: '10px' }}>
                       <p style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>ROI %</p>
                       <p style={{ fontSize: '1.3rem', fontWeight: 800, color: '#f59e0b', marginTop: '4px' }}>
-                        {searchResults.sourcing_results[0].market_analysis.roi_percent}%
+                        {firstAnalysis.roi_percent ?? 0}%
                       </p>
                     </div>
                   </div>
