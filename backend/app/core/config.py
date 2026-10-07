@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # Auth
-    JWT_SECRET_KEY: str = "secret-key-change-in-production"
+    JWT_SECRET_KEY: str = "sourceiq_super_secret_jwt_key_32bytes_min"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
