@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Query, HTTPException, File, UploadFile, Form
@@ -10,6 +11,7 @@ from backend.app.services.cost_engine import cost_engine
 from backend.app.services.pricing_engine import pricing_engine
 from backend.app.services.gemini_service import gemini_service
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -111,28 +113,60 @@ async def search_products_by_image(
     file: UploadFile = File(...),
     quantity: int = Form(10),
     shipping_method: str = Form("air"),
-    user_weight_kg: Optional[float] = Form(None),
-    rate_rmb_bdt: Optional[float] = Form(16.50)
+    user_weight_kg: Optional[str] = Form(None),
+    rate_rmb_bdt: Optional[str] = Form("16.50")
 ):
     """
     Search product by uploading an Image. Uses Google Gemini Vision AI to identify product features,
     generate English and Chinese search terms, query China sourcing platforms + BD local market benchmarks,
     and calculate Landed Costs using user's RMB exchange rate.
     """
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Uploaded file must be a valid image (JPEG, PNG, WEBP, HEIC)")
+    filename = (file.filename or "").lower()
+    content_type = (file.content_type or "").lower()
 
-    contents = await file.read()
+    valid_extensions = ('.jpg', '.jpeg', '.png', '.webp', '.heic', '.bmp', '.gif')
+    is_valid_type = content_type.startswith("image/") or filename.endswith(valid_extensions)
+
+    if not is_valid_type:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Uploaded file '{file.filename}' is not a recognized image. Please upload JPG, PNG, WEBP, or HEIC image."
+        )
+
+    try:
+        contents = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read image file: {str(e)}")
+
+    if len(contents) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded image file is empty.")
+
     if len(contents) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Image size exceeds 10MB limit")
+        raise HTTPException(status_code=400, detail="Image size exceeds 10MB limit.")
+
+    # Determine MIME type safely
+    mime_type = content_type if content_type.startswith("image/") else "image/jpeg"
 
     # Analyze product image using Gemini Vision AI
-    analysis = await gemini_service.analyze_product_image(contents, mime_type=file.content_type)
+    analysis = await gemini_service.analyze_product_image(contents, mime_type=mime_type)
 
     keywords_en = analysis.get("keywords_en", [])
     search_query = keywords_en[0] if keywords_en else analysis.get("description_en", "Sample Product")
 
-    rmb_rate = Decimal(str(rate_rmb_bdt)) if rate_rmb_bdt and rate_rmb_bdt > 0 else Decimal("16.50")
+    # Parse numeric inputs safely
+    try:
+        parsed_rate = Decimal(str(rate_rmb_bdt)) if rate_rmb_bdt else Decimal("16.50")
+        if parsed_rate <= 0:
+            parsed_rate = Decimal("16.50")
+    except Exception:
+        parsed_rate = Decimal("16.50")
+
+    parsed_weight = None
+    if user_weight_kg:
+        try:
+            parsed_weight = float(user_weight_kg)
+        except ValueError:
+            parsed_weight = None
 
     # Execute search using keywords derived from Gemini Vision AI
     ali_task = aliexpress_connector.search_by_image(contents)
@@ -159,8 +193,8 @@ async def search_products_by_image(
             product=product,
             quantity=quantity,
             shipping_method=shipping_method,
-            user_weight_kg=user_weight_kg,
-            custom_rate_rmb_bdt=rmb_rate
+            user_weight_kg=parsed_weight,
+            custom_rate_rmb_bdt=parsed_rate
         )
 
         margin_analysis = pricing_engine.calculate_market_margin(
@@ -182,7 +216,7 @@ async def search_products_by_image(
         query=search_query,
         quantity=quantity,
         shipping_method=shipping_method,
-        rate_rmb_bdt=rmb_rate,
+        rate_rmb_bdt=parsed_rate,
         image_analysis=analysis,
         sourcing_results=sourced_results,
         bd_market_benchmarks=bd_benchmarks

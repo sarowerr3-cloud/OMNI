@@ -123,7 +123,8 @@ export default function Home() {
         });
 
         if (!res.ok) {
-          throw new Error(`Server returned status ${res.status}`);
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.detail || `Server returned status ${res.status}`);
         }
         const data = await res.json();
         setSearchResults(data);
@@ -141,7 +142,8 @@ export default function Home() {
         });
 
         if (!res.ok) {
-          throw new Error(`Server returned status ${res.status}`);
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.detail || `Server returned status ${res.status}`);
         }
         const data = await res.json();
         setSearchResults(data);
