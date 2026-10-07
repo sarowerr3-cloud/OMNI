@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "SourceIQ"
+    PROJECT_NAME: str = "OMNI"
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
 

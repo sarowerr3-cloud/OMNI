@@ -2,13 +2,13 @@ import './globals.css';
 import { Metadata, Viewport } from 'next';
 
 export const metadata: Metadata = {
-  title: 'SourceIQ - Product Sourcing & Costing Engine',
-  description: 'Multi-platform sourcing and landed-cost calculation powered by Gemini AI.',
+  title: 'OMNI - Global Sourcing & BD Market Intelligence Engine',
+  description: 'Product sourcing from AliExpress, 1688, Pinduoduo, landed-cost calculator, and Bangladesh market price discovery powered by Google Gemini AI.',
   manifest: '/manifest.json',
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0284c7',
+  themeColor: '#dc2626',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,

@@ -1,19 +1,19 @@
 {
-  "name": "SourceIQ Sourcing & Costing",
-  "short_name": "SourceIQ",
-  "description": "Product sourcing, price comparison and costing tool with Gemini AI engine.",
+  "name": "OMNI Sourcing & Costing",
+  "short_name": "OMNI",
+  "description": "Global product sourcing, landed-cost calculator and Bangladesh market intelligence powered by Gemini AI.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0284c7",
+  "background_color": "#09090b",
+  "theme_color": "#dc2626",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/logo.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/logo.png",
       "sizes": "512x512",
       "type": "image/png"
     }

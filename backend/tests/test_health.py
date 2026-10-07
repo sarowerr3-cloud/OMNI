@@ -7,6 +7,6 @@ async def test_health_endpoint(async_client):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
-    assert data["service"] == "SourceIQ"
+    assert data["service"] == "OMNI"
     assert data["ai_provider"] == "google-gemini"
     assert "gemini_configured" in data

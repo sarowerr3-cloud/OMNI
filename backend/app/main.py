@@ -25,7 +25,7 @@ app.include_router(api_router)
 @app.get("/")
 async def root():
     return {
-        "message": "Welcome to SourceIQ Sourcing API",
+        "message": "Welcome to OMNI Sourcing & Costing API",
         "docs": "/docs",
         "health": "/health"
     }
