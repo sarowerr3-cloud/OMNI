@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   FileText, 
   Plus, 
@@ -94,7 +94,7 @@ export default function ProductListBuilder({
   const [newImageUrl, setNewImageUrl] = useState<string>('');
   const [newPlatform, setNewPlatform] = useState<string>('1688');
 
-  // Image Upload File
+  // Image Upload File Reference
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Editing state
@@ -108,11 +108,7 @@ export default function ProductListBuilder({
   const [savingToServer, setSavingToServer] = useState<boolean>(false);
   const [downloadingPdf, setDownloadingPdf] = useState<boolean>(false);
 
-  // Landed Cost Summary Option Toggle
-  const [includeLandedCostEstimate, setIncludeLandedCostEstimate] = useState<boolean>(false);
-  const [freightRatePerKg, setFreightRatePerKg] = useState<string>('1200'); // BDT 1200 / kg air freight
-
-  // Auto-save to localStorage
+  // Auto-save & restore from localStorage
   useEffect(() => {
     const cachedData = localStorage.getItem('omni_active_product_list');
     if (cachedData && items.length === 0) {
@@ -197,7 +193,7 @@ export default function ProductListBuilder({
     setNewQuantity(1);
   };
 
-  // Image Upload file reader
+  // Image Upload File Reader
   const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -274,9 +270,9 @@ export default function ProductListBuilder({
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
   const totalItemsCount = items.length;
 
-  // Estimated Landed Cost
-  const totalFreightBdt = totalWeightKg * (Number(freightRatePerKg) || 1200);
-  const estimatedLandedTotalBdt = totalPriceBdt + totalFreightBdt + totalPriceBdt * 0.20; // 20% duty + agent fee
+  // Estimated Landed Cost (Total Product Price + Air Freight @ 1200 Tk/kg + 20% Duty/Fees)
+  const totalFreightBdt = totalWeightKg * 1200;
+  const estimatedLandedTotalBdt = totalPriceBdt + totalFreightBdt + totalPriceBdt * 0.20;
 
   // Clear List
   const handleClearList = () => {
@@ -324,7 +320,6 @@ export default function ProductListBuilder({
         setCurrentListId(data.id);
         showToast('💾 List saved successfully to database!');
       } else {
-        // Fallback to local storage notice
         showToast('💾 Saved list locally to browser storage!');
       }
     } catch (err) {
@@ -363,7 +358,7 @@ export default function ProductListBuilder({
     showToast(`📂 Loaded list: "${saved.name}"`);
   };
 
-  // Delete Saved List from server
+  // Delete Saved List
   const handleDeleteSavedList = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm('Are you sure you want to delete this saved list?')) return;
@@ -443,7 +438,6 @@ export default function ProductListBuilder({
     showToast('⏳ Preparing high-resolution A4 PDF document...');
 
     try {
-      // Dynamically import html2pdf.js on client side
       const html2pdfModule = await import('html2pdf.js');
       const html2pdf = html2pdfModule.default || html2pdfModule;
 
@@ -476,79 +470,140 @@ export default function ProductListBuilder({
     window.print();
   };
 
+  // Common Input Base Style Object
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    backgroundColor: '#09090b',
+    border: '1px solid #3f3f46',
+    borderRadius: '8px',
+    padding: '9px 12px',
+    fontSize: '0.9rem',
+    color: '#ffffff',
+    outline: 'none',
+    boxSizing: 'border-box'
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '0.75rem',
+    fontWeight: 700,
+    color: '#e2e8f0',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    marginBottom: '6px'
+  };
+
+  const buttonActionStyle: React.CSSProperties = {
+    padding: '8px 14px',
+    borderRadius: '10px',
+    backgroundColor: '#18181b',
+    color: '#f8fafc',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    border: '1px solid #3f3f46',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    cursor: 'pointer'
+  };
+
   return (
-    <div className="w-full space-y-6">
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      
       {/* ------------------------------------------------------------- */}
-      {/* SCREEN UI CONTROLS & HEADER */}
+      {/* MAIN CONTAINER CARD FOR PRODUCT LIST BUILDER */}
       {/* ------------------------------------------------------------- */}
-      <div className="no-print bg-slate-900/90 border border-slate-800 rounded-2xl p-5 md:p-6 backdrop-blur-md shadow-xl">
-        
-        {/* TOP BAR: Title & Actions */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+      <div 
+        className="no-print"
+        style={{
+          backgroundColor: '#18181b',
+          border: '1px solid #27272a',
+          borderRadius: '16px',
+          padding: '1.5rem',
+          boxShadow: '0 4px 25px rgba(0, 0, 0, 0.5)'
+        }}
+      >
+        {/* TOP BAR: Title & Action Buttons */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', paddingBottom: '1.25rem', borderBottom: '1px solid #27272a' }}>
           <div>
-            <div className="flex items-center gap-2 text-red-500 font-semibold text-sm uppercase tracking-wider mb-1">
-              <Sparkles className="w-4 h-4" />
-              <span>Sourcing List Creator & Smart Cost Engine</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#dc2626', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>
+              <Sparkles style={{ width: '16px', height: '16px' }} />
+              <span>Sourcing List Creator & Cost Engine</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
-              <Package className="w-8 h-8 text-red-500" />
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.5px', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Package style={{ width: '28px', height: '28px', color: '#dc2626' }} />
               Product List Builder
             </h1>
-            <p className="text-slate-400 text-sm mt-1">
+            <p style={{ color: '#a1a1aa', fontSize: '0.85rem', marginTop: '4px', margin: 0 }}>
               Add products sequentially, calculate live total weight & price, and export as an A4 formatted PDF.
             </p>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Action Buttons Toolbar */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <button
               onClick={handleOpenSavedModal}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium transition flex items-center gap-2 border border-slate-700"
+              style={buttonActionStyle}
             >
-              <FolderOpen className="w-4 h-4 text-blue-400" />
+              <FolderOpen style={{ width: '16px', height: '16px', color: '#60a5fa' }} />
               <span>Saved Lists</span>
             </button>
 
             <button
               onClick={handleSaveToServer}
               disabled={savingToServer}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium transition flex items-center gap-2 border border-slate-700"
+              style={buttonActionStyle}
             >
-              <Save className="w-4 h-4 text-emerald-400" />
+              <Save style={{ width: '16px', height: '16px', color: '#34d399' }} />
               <span>{savingToServer ? 'Saving...' : 'Save List'}</span>
             </button>
 
             <button
               onClick={handleShareSummary}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium transition flex items-center gap-2 border border-slate-700"
+              style={buttonActionStyle}
             >
-              <Share2 className="w-4 h-4 text-purple-400" />
+              <Share2 style={{ width: '16px', height: '16px', color: '#c084fc' }} />
               <span>Copy Text</span>
             </button>
 
             <button
               onClick={handleExportCsv}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium transition flex items-center gap-2 border border-slate-700"
+              style={buttonActionStyle}
             >
-              <Download className="w-4 h-4 text-amber-400" />
+              <Download style={{ width: '16px', height: '16px', color: '#fbbf24' }} />
               <span>CSV</span>
             </button>
 
             <button
               onClick={handleDownloadA4Pdf}
               disabled={downloadingPdf}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-semibold text-sm shadow-lg shadow-red-900/30 transition flex items-center gap-2"
+              style={{
+                padding: '9px 18px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, #dc2626 0%, #990000 100%)',
+                color: '#ffffff',
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                border: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                boxShadow: '0 0 15px rgba(220, 38, 38, 0.4)'
+              }}
             >
-              <FileText className="w-4 h-4" />
+              <FileText style={{ width: '16px', height: '16px' }} />
               <span>{downloadingPdf ? 'Exporting PDF...' : 'Download A4 PDF'}</span>
             </button>
 
             <button
               onClick={handleNativePrint}
               title="Print to PDF via Browser"
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+              style={{ ...buttonActionStyle, padding: '9px' }}
             >
-              <Printer className="w-4 h-4" />
+              <Printer style={{ width: '16px', height: '16px' }} />
             </button>
           </div>
         </div>
@@ -556,137 +611,145 @@ export default function ProductListBuilder({
         {/* ------------------------------------------------------------- */}
         {/* LIST SPECIFICATION FORM AT THE VERY TOP */}
         {/* ------------------------------------------------------------- */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mt-6 bg-slate-950/60 p-4 md:p-5 rounded-xl border border-slate-800/80">
-          {/* List Name */}
-          <div className="md:col-span-6 space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Tag className="w-3.5 h-3.5 text-red-400" />
-              Product List Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={listName}
-              onChange={(e) => setListName(e.target.value)}
-              placeholder="e.g. Smart Watch & Accessories Sourcing List Q4"
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
-            />
-          </div>
+        <div style={{ marginTop: '1.25rem', backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+            {/* List Name */}
+            <div style={{ gridColumn: 'span 2' }}>
+              <label style={labelStyle}>
+                <Tag style={{ width: '14px', height: '14px', color: '#f87171' }} />
+                Product List Name <span style={{ color: '#dc2626' }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={listName}
+                onChange={(e) => setListName(e.target.value)}
+                placeholder="e.g. Smart Watch & Accessories Sourcing List Q4"
+                style={{ ...inputStyle, border: '1px solid #dc2626', fontWeight: 600 }}
+              />
+            </div>
 
-          {/* List Date */}
-          <div className="md:col-span-3 space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-red-400" />
-              List Date <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="date"
-              value={listDate}
-              onChange={(e) => setListDate(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
-            />
-          </div>
+            {/* List Date */}
+            <div>
+              <label style={labelStyle}>
+                <Calendar style={{ width: '14px', height: '14px', color: '#f87171' }} />
+                List Date <span style={{ color: '#dc2626' }}>*</span>
+              </label>
+              <input
+                type="date"
+                value={listDate}
+                onChange={(e) => setListDate(e.target.value)}
+                style={{ ...inputStyle, fontWeight: 600 }}
+              />
+            </div>
 
-          {/* Currency Exchange Rates */}
-          <div className="md:col-span-3 space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Coins className="w-3.5 h-3.5 text-amber-400" />
-              RMB / BDT Rate (৳)
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={rmbRate}
-              onChange={(e) => setRmbRate(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-red-500 transition"
-            />
-          </div>
+            {/* Currency Exchange Rate */}
+            <div>
+              <label style={labelStyle}>
+                <Coins style={{ width: '14px', height: '14px', color: '#fbbf24' }} />
+                RMB / BDT Rate (৳)
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={rmbRate}
+                onChange={(e) => setRmbRate(e.target.value)}
+                style={{ ...inputStyle, fontWeight: 700 }}
+              />
+            </div>
 
-          {/* List Notes */}
-          <div className="md:col-span-12 space-y-1.5">
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Info className="w-3.5 h-3.5 text-slate-400" />
-              List Notes / Sourcing Context (Optional)
-            </label>
-            <input
-              type="text"
-              value={listNotes}
-              onChange={(e) => setListNotes(e.target.value)}
-              placeholder="e.g. Sourcing order for Chittagong distribution branch. Air freight method required."
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3.5 py-2 text-sm text-slate-200 focus:outline-none focus:border-slate-700 transition"
-            />
+            {/* List Notes */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={{ ...labelStyle, color: '#a1a1aa' }}>
+                <Info style={{ width: '14px', height: '14px', color: '#a1a1aa' }} />
+                List Notes / Sourcing Context (Optional)
+              </label>
+              <input
+                type="text"
+                value={listNotes}
+                onChange={(e) => setListNotes(e.target.value)}
+                placeholder="e.g. Urgent sourcing order for Dhaka warehouse distribution. Air freight method required."
+                style={inputStyle}
+              />
+            </div>
           </div>
         </div>
 
         {/* ------------------------------------------------------------- */}
         {/* LIVE TOTAL STATS DASHBOARD SUMMARY BAR */}
         {/* ------------------------------------------------------------- */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mt-6">
-          <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400">
-              <Package className="w-6 h-6" />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginTop: '1.25rem' }}>
+          
+          {/* Card 1: Total Items */}
+          <div style={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#60a5fa' }}>
+              <Package style={{ width: '24px', height: '24px' }} />
             </div>
             <div>
-              <div className="text-xs text-slate-400 font-medium uppercase">Total Items</div>
-              <div className="text-xl md:text-2xl font-bold text-white">
-                {totalItemsCount} <span className="text-xs font-normal text-slate-400">({totalQuantity} pcs)</span>
+              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Total Items</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#ffffff' }}>
+                {totalItemsCount} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>({totalQuantity} pcs)</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400">
-              <Scale className="w-6 h-6" />
+          {/* Card 2: Total Weight */}
+          <div style={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#fbbf24' }}>
+              <Scale style={{ width: '24px', height: '24px' }} />
             </div>
             <div>
-              <div className="text-xs text-slate-400 font-medium uppercase">Total Weight (kg)</div>
-              <div className="text-xl md:text-2xl font-bold text-amber-400">
-                {totalWeightKg.toFixed(3)} <span className="text-xs font-normal text-slate-400">kg</span>
+              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Total Weight (kg)</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fbbf24' }}>
+                {totalWeightKg.toFixed(3)} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>kg</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-              <Coins className="w-6 h-6" />
+          {/* Card 3: Total Price */}
+          <div style={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#34d399' }}>
+              <Coins style={{ width: '24px', height: '24px' }} />
             </div>
             <div>
-              <div className="text-xs text-slate-400 font-medium uppercase">Total Product Price</div>
-              <div className="text-xl md:text-2xl font-bold text-emerald-400">
-                ৳{totalPriceBdt.toLocaleString()} <span className="text-xs font-normal text-slate-400">BDT</span>
+              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Total Product Price</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#34d399' }}>
+                ৳{totalPriceBdt.toLocaleString()} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>BDT</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400">
-              <Sparkles className="w-6 h-6" />
+          {/* Card 4: Est Landed Total */}
+          <div style={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(220, 38, 38, 0.15)', border: '1px solid rgba(220, 38, 38, 0.3)', color: '#f87171' }}>
+              <Sparkles style={{ width: '24px', height: '24px' }} />
             </div>
             <div>
-              <div className="text-xs text-slate-400 font-medium uppercase">Est. Landed Total</div>
-              <div className="text-xl md:text-2xl font-bold text-red-400">
+              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Est. Landed Total</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#f87171' }}>
                 ৳{Math.round(estimatedLandedTotalBdt).toLocaleString()}
               </div>
             </div>
           </div>
+
         </div>
 
         {/* ------------------------------------------------------------- */}
         {/* ADD PRODUCT FORM (SEQUENTIAL ENTRY) */}
         {/* ------------------------------------------------------------- */}
-        <div className="mt-8 bg-slate-950/90 border border-red-900/30 rounded-xl p-5 md:p-6 shadow-inner">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Plus className="w-5 h-5 text-red-500" />
+        <div style={{ marginTop: '1.5rem', backgroundColor: '#09090b', border: '1px solid rgba(220, 38, 38, 0.4)', borderRadius: '12px', padding: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '1px solid #27272a' }}>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Plus style={{ width: '20px', height: '20px', color: '#dc2626' }} />
               Add Product Sequentially
             </h2>
-            <span className="text-xs text-slate-400">Products are added step-by-step to the list below</span>
+            <span style={{ fontSize: '0.75rem', color: '#a1a1aa' }}>Products are added step-by-step to the list below</span>
           </div>
 
-          <form onSubmit={handleAddProduct} className="grid grid-cols-1 md:grid-cols-12 gap-4">
+          <form onSubmit={handleAddProduct} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
             {/* Title */}
-            <div className="md:col-span-5 space-y-1">
-              <label className="text-xs font-medium text-slate-300">
-                Product Title / Name <span className="text-red-500">*</span>
+            <div style={{ gridColumn: 'span 2' }}>
+              <label style={labelStyle}>
+                Product Title / Name <span style={{ color: '#dc2626' }}>*</span>
               </label>
               <input
                 type="text"
@@ -694,17 +757,17 @@ export default function ProductListBuilder({
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 placeholder="e.g. Smart Watch Ultra 8 Series"
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500"
+                style={inputStyle}
               />
             </div>
 
             {/* Platform */}
-            <div className="md:col-span-3 space-y-1">
-              <label className="text-xs font-medium text-slate-300">Platform / Source</label>
+            <div>
+              <label style={labelStyle}>Platform / Source</label>
               <select
                 value={newPlatform}
                 onChange={(e) => setNewPlatform(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500"
+                style={inputStyle}
               >
                 <option value="1688">1688 China</option>
                 <option value="AliExpress">AliExpress</option>
@@ -716,11 +779,11 @@ export default function ProductListBuilder({
             </div>
 
             {/* Price & Currency */}
-            <div className="md:col-span-4 space-y-1">
-              <label className="text-xs font-medium text-slate-300">
-                Unit Price & Currency <span className="text-red-500">*</span>
+            <div>
+              <label style={labelStyle}>
+                Unit Price & Currency <span style={{ color: '#dc2626' }}>*</span>
               </label>
-              <div className="flex gap-2">
+              <div style={{ display: 'flex', gap: '6px' }}>
                 <input
                   type="number"
                   step="0.01"
@@ -729,12 +792,12 @@ export default function ProductListBuilder({
                   value={newPrice}
                   onChange={(e) => setNewPrice(e.target.value)}
                   placeholder="Price"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500"
+                  style={{ ...inputStyle, flex: 1 }}
                 />
                 <select
                   value={newCurrency}
                   onChange={(e) => setNewCurrency(e.target.value as any)}
-                  className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-semibold focus:outline-none"
+                  style={{ ...inputStyle, width: '90px', backgroundColor: '#18181b', fontWeight: 700 }}
                 >
                   <option value="BDT">BDT (৳)</option>
                   <option value="RMB">RMB (¥)</option>
@@ -744,11 +807,11 @@ export default function ProductListBuilder({
             </div>
 
             {/* Weight */}
-            <div className="md:col-span-4 space-y-1">
-              <label className="text-xs font-medium text-slate-300">
-                Unit Weight <span className="text-red-500">*</span>
+            <div>
+              <label style={labelStyle}>
+                Unit Weight <span style={{ color: '#dc2626' }}>*</span>
               </label>
-              <div className="flex gap-2">
+              <div style={{ display: 'flex', gap: '6px' }}>
                 <input
                   type="number"
                   step="0.001"
@@ -757,12 +820,12 @@ export default function ProductListBuilder({
                   value={newWeightVal}
                   onChange={(e) => setNewWeightVal(e.target.value)}
                   placeholder="Weight"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500"
+                  style={{ ...inputStyle, flex: 1 }}
                 />
                 <select
                   value={newWeightUnit}
                   onChange={(e) => setNewWeightUnit(e.target.value as any)}
-                  className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-semibold focus:outline-none"
+                  style={{ ...inputStyle, width: '70px', backgroundColor: '#18181b', fontWeight: 700 }}
                 >
                   <option value="kg">kg</option>
                   <option value="gm">gm</option>
@@ -771,21 +834,21 @@ export default function ProductListBuilder({
             </div>
 
             {/* Quantity */}
-            <div className="md:col-span-2 space-y-1">
-              <label className="text-xs font-medium text-slate-300">Quantity</label>
+            <div>
+              <label style={labelStyle}>Quantity (Units)</label>
               <input
                 type="number"
                 min="1"
                 value={newQuantity}
                 onChange={(e) => setNewQuantity(Number(e.target.value))}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500"
+                style={inputStyle}
               />
             </div>
 
             {/* Direct Link URL */}
-            <div className="md:col-span-6 space-y-1">
-              <label className="text-xs font-medium text-slate-300 flex items-center gap-1">
-                <LinkIcon className="w-3.5 h-3.5 text-blue-400" />
+            <div style={{ gridColumn: 'span 2' }}>
+              <label style={labelStyle}>
+                <LinkIcon style={{ width: '14px', height: '14px', color: '#60a5fa' }} />
                 Direct Product Link (URL)
               </label>
               <input
@@ -793,28 +856,28 @@ export default function ProductListBuilder({
                 value={newProductUrl}
                 onChange={(e) => setNewProductUrl(e.target.value)}
                 placeholder="https://detail.1688.com/offer/..."
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500"
+                style={inputStyle}
               />
             </div>
 
             {/* Image URL & File Upload */}
-            <div className="md:col-span-8 space-y-1">
-              <label className="text-xs font-medium text-slate-300 flex items-center gap-1">
-                <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
+            <div style={{ gridColumn: 'span 2' }}>
+              <label style={labelStyle}>
+                <ImageIcon style={{ width: '14px', height: '14px', color: '#34d399' }} />
                 Product Image (URL or Upload)
               </label>
-              <div className="flex gap-2">
+              <div style={{ display: 'flex', gap: '6px' }}>
                 <input
                   type="url"
                   value={newImageUrl}
                   onChange={(e) => setNewImageUrl(e.target.value)}
                   placeholder="https://... image URL"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500"
+                  style={{ ...inputStyle, flex: 1 }}
                 />
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 whitespace-nowrap"
+                  style={{ ...buttonActionStyle, padding: '8px 12px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
                 >
                   Upload File
                 </button>
@@ -823,30 +886,43 @@ export default function ProductListBuilder({
                   ref={fileInputRef}
                   onChange={handleImageFileUpload}
                   accept="image/*"
-                  className="hidden"
+                  style={{ display: 'none' }}
                 />
               </div>
             </div>
 
             {/* Details & Specs */}
-            <div className="md:col-span-4 space-y-1">
-              <label className="text-xs font-medium text-slate-300">Details / Specs</label>
+            <div>
+              <label style={labelStyle}>Details / Specs</label>
               <input
                 type="text"
                 value={newDetails}
                 onChange={(e) => setNewDetails(e.target.value)}
                 placeholder="e.g. OLED screen, Titanium Casing, Black"
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500"
+                style={inputStyle}
               />
             </div>
 
-            {/* Add Button */}
-            <div className="md:col-span-12 flex justify-end mt-2">
+            {/* Submit Button */}
+            <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm shadow-lg shadow-red-900/40 transition flex items-center gap-2"
+                style={{
+                  padding: '10px 24px',
+                  borderRadius: '10px',
+                  background: 'linear-gradient(135deg, #dc2626 0%, #990000 100%)',
+                  color: '#ffffff',
+                  fontSize: '0.9rem',
+                  fontWeight: 800,
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  cursor: 'pointer',
+                  boxShadow: '0 0 15px rgba(220, 38, 38, 0.4)'
+                }}
               >
-                <Plus className="w-4 h-4" />
+                <Plus style={{ width: '18px', height: '18px' }} />
                 Add Product to List
               </button>
             </div>
@@ -854,82 +930,91 @@ export default function ProductListBuilder({
         </div>
 
         {/* ------------------------------------------------------------- */}
-        {/* CURRENT PRODUCT LIST TABLE / CARDS VIEW */}
+        {/* CURRENT PRODUCT LIST ITEMS TABLE / CARDS VIEW */}
         {/* ------------------------------------------------------------- */}
-        <div className="mt-8">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <Layers className="w-5 h-5 text-red-400" />
+        <div style={{ marginTop: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Layers style={{ width: '20px', height: '20px', color: '#f87171' }} />
               Products in List ({items.length})
             </h3>
 
             {items.length > 0 && (
               <button
                 onClick={handleClearList}
-                className="text-xs text-red-400 hover:text-red-300 transition flex items-center gap-1"
+                style={{ backgroundColor: 'transparent', color: '#f87171', border: 'none', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Trash2 style={{ width: '14px', height: '14px' }} />
                 Clear All
               </button>
             )}
           </div>
 
           {items.length === 0 ? (
-            <div className="bg-slate-950/60 border border-dashed border-slate-800 rounded-xl p-12 text-center">
-              <Package className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-              <p className="text-slate-300 font-semibold text-base">Your product list is currently empty</p>
-              <p className="text-slate-500 text-sm mt-1 max-w-md mx-auto">
-                Use the sequential product form above or click "+ Add to Product List" on any search result card to add products here!
+            <div style={{ backgroundColor: '#09090b', border: '1px dashed #27272a', borderRadius: '12px', padding: '3rem 1rem', textAlign: 'center' }}>
+              <Package style={{ width: '48px', height: '48px', color: '#3f3f46', margin: '0 auto 12px auto' }} />
+              <p style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '1rem', margin: 0 }}>Your product list is currently empty</p>
+              <p style={{ color: '#71717a', fontSize: '0.85rem', marginTop: '6px', margin: 0 }}>
+                Use the sequential product form above or click "+ Add to Product List" on any search result card!
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {items.map((item, index) => {
                 const lineTotalBdt = item.price_bdt * item.quantity;
                 const lineTotalWeightKg = item.weight_kg * item.quantity;
-                const isEditing = editingId === item.id;
 
                 return (
                   <div
                     key={item.id}
-                    className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 transition hover:border-slate-700 flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+                    style={{
+                      backgroundColor: '#09090b',
+                      border: '1px solid #27272a',
+                      borderRadius: '12px',
+                      padding: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '1rem'
+                    }}
                   >
-                    {/* Item Serial & Image */}
-                    <div className="flex items-center gap-3.5 w-full md:w-auto">
-                      <span className="w-7 h-7 rounded-lg bg-slate-800 text-slate-300 font-bold text-xs flex items-center justify-center shrink-0">
+                    {/* Item Serial, Image & Details */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: '240px', flex: 1 }}>
+                      <span style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#18181b', border: '1px solid #3f3f46', color: '#f8fafc', fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         {index + 1}
                       </span>
 
-                      <div className="w-14 h-14 rounded-lg bg-slate-900 border border-slate-800 overflow-hidden shrink-0 flex items-center justify-center">
+                      <div style={{ width: '56px', height: '56px', borderRadius: '8px', backgroundColor: '#18181b', border: '1px solid #27272a', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {item.image_url ? (
                           <img
                             src={item.image_url}
                             alt={item.title}
-                            className="w-full h-full object-cover"
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                             onError={(e) => {
                               (e.target as HTMLElement).style.display = 'none';
                             }}
                           />
                         ) : (
-                          <Package className="w-6 h-6 text-slate-600" />
+                          <Package style={{ width: '24px', height: '24px', color: '#71717a' }} />
                         )}
                       </div>
 
-                      {/* Info / Title / Link */}
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-bold text-white text-base truncate max-w-xs md:max-w-md">
+                      {/* Info */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>
                             {item.title}
                           </h4>
                           {item.platform && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-red-950/60 text-red-400 border border-red-900/50 uppercase">
+                            <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 800, backgroundColor: 'rgba(220, 38, 38, 0.2)', color: '#f87171', border: '1px solid rgba(220, 38, 38, 0.3)', textTransform: 'uppercase' }}>
                               {item.platform}
                             </span>
                           )}
                         </div>
 
                         {item.details && (
-                          <p className="text-xs text-slate-400 line-clamp-1">{item.details}</p>
+                          <p style={{ fontSize: '0.75rem', color: '#a1a1aa', margin: 0 }}>{item.details}</p>
                         )}
 
                         {item.product_url ? (
@@ -937,143 +1022,147 @@ export default function ProductListBuilder({
                             href={item.product_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-blue-400 hover:underline hover:text-blue-300"
+                            style={{ fontSize: '0.75rem', color: '#60a5fa', textDecoration: 'underline', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}
                           >
-                            <ExternalLink className="w-3 h-3" />
+                            <ExternalLink style={{ width: '12px', height: '12px' }} />
                             <span>Direct Product Link</span>
                           </a>
                         ) : (
-                          <span className="text-xs text-slate-600">No URL link provided</span>
+                          <span style={{ fontSize: '0.75rem', color: '#52525b' }}>No URL link</span>
                         )}
                       </div>
                     </div>
 
-                    {/* Quantity & Calculations */}
-                    <div className="flex items-center justify-between md:justify-end gap-6 w-full md:w-auto border-t md:border-t-0 pt-3 md:pt-0 border-slate-800/60">
-                      {/* Quantity Stepper */}
-                      <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg p-1">
+                    {/* Quantity Stepper & Calculation Badges */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
+                      {/* Stepper */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '4px' }}>
                         <button
                           onClick={() => handleQuantityChange(item.id, item.quantity - 1)}
-                          className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center"
+                          style={{ width: '24px', height: '24px', borderRadius: '4px', backgroundColor: '#27272a', color: '#ffffff', fontWeight: 800, fontSize: '0.8rem', border: 'none', cursor: 'pointer' }}
                         >
                           -
                         </button>
-                        <span className="w-8 text-center text-xs font-bold text-white">{item.quantity}</span>
+                        <span style={{ width: '32px', textAlign: 'center', fontSize: '0.85rem', fontWeight: 800, color: '#ffffff' }}>{item.quantity}</span>
                         <button
                           onClick={() => handleQuantityChange(item.id, item.quantity + 1)}
-                          className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center"
+                          style={{ width: '24px', height: '24px', borderRadius: '4px', backgroundColor: '#27272a', color: '#ffffff', fontWeight: 800, fontSize: '0.8rem', border: 'none', cursor: 'pointer' }}
                         >
                           +
                         </button>
                       </div>
 
-                      {/* Weight Breakdown */}
-                      <div className="text-right">
-                        <div className="text-[10px] uppercase font-semibold text-slate-400">Weight</div>
-                        <div className="text-sm font-bold text-amber-400">
+                      {/* Weight Badge */}
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', fontWeight: 700, color: '#a1a1aa' }}>Weight</div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fbbf24' }}>
                           {lineTotalWeightKg.toFixed(3)} kg
                         </div>
-                        <div className="text-[10px] text-slate-500">{item.weight_kg} kg / unit</div>
+                        <div style={{ fontSize: '0.65rem', color: '#71717a' }}>{item.weight_kg} kg / unit</div>
                       </div>
 
-                      {/* Price Breakdown */}
-                      <div className="text-right">
-                        <div className="text-[10px] uppercase font-semibold text-slate-400">Line Total</div>
-                        <div className="text-sm font-bold text-emerald-400">
+                      {/* Price Badge */}
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', fontWeight: 700, color: '#a1a1aa' }}>Line Total</div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#34d399' }}>
                           ৳{lineTotalBdt.toLocaleString()}
                         </div>
-                        <div className="text-[10px] text-slate-500">৳{item.price_bdt.toLocaleString()} / unit</div>
+                        <div style={{ fontSize: '0.65rem', color: '#71717a' }}>৳{item.price_bdt.toLocaleString()} / unit</div>
                       </div>
 
-                      {/* Reorder & Actions */}
-                      <div className="flex items-center gap-1">
+                      {/* Reorder & Remove Buttons */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <button
                           onClick={() => handleMoveItem(index, 'up')}
                           disabled={index === 0}
-                          className="p-1 text-slate-400 hover:text-white disabled:opacity-30"
+                          style={{ padding: '4px', backgroundColor: 'transparent', color: index === 0 ? '#3f3f46' : '#a1a1aa', border: 'none', cursor: 'pointer' }}
                         >
-                          <MoveUp className="w-3.5 h-3.5" />
+                          <MoveUp style={{ width: '16px', height: '16px' }} />
                         </button>
                         <button
                           onClick={() => handleMoveItem(index, 'down')}
                           disabled={index === items.length - 1}
-                          className="p-1 text-slate-400 hover:text-white disabled:opacity-30"
+                          style={{ padding: '4px', backgroundColor: 'transparent', color: index === items.length - 1 ? '#3f3f46' : '#a1a1aa', border: 'none', cursor: 'pointer' }}
                         >
-                          <MoveDown className="w-3.5 h-3.5" />
+                          <MoveDown style={{ width: '16px', height: '16px' }} />
                         </button>
                         <button
                           onClick={() => handleDeleteItem(item.id)}
-                          className="p-1 text-red-400 hover:text-red-300 ml-1"
+                          style={{ padding: '4px', backgroundColor: 'transparent', color: '#f87171', border: 'none', cursor: 'pointer', marginLeft: '4px' }}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 style={{ width: '18px', height: '18px' }} />
                         </button>
                       </div>
                     </div>
+
                   </div>
                 );
               })}
             </div>
           )}
         </div>
+
       </div>
 
       {/* ------------------------------------------------------------- */}
       {/* SAVED LISTS MODAL */}
       {/* ------------------------------------------------------------- */}
       {showSavedModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <FolderOpen className="w-5 h-5 text-blue-400" />
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '16px', maxWidth: '600px', width: '100%', padding: '1.5rem', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }}>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid #27272a', marginBottom: '1rem' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <FolderOpen style={{ width: '20px', height: '20px', color: '#60a5fa' }} />
                 Saved Product Lists
               </h3>
               <button
                 onClick={() => setShowSavedModal(false)}
-                className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+                style={{ padding: '6px', backgroundColor: '#27272a', border: 'none', borderRadius: '8px', color: '#a1a1aa', cursor: 'pointer' }}
               >
-                <X className="w-5 h-5" />
+                <X style={{ width: '18px', height: '18px' }} />
               </button>
             </div>
 
             {loadingSaved ? (
-              <div className="py-8 text-center text-slate-400 text-sm">Loading saved product lists...</div>
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#a1a1aa', fontSize: '0.9rem' }}>Loading saved product lists...</div>
             ) : savedLists.length === 0 ? (
-              <div className="py-8 text-center text-slate-400 text-sm">
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#a1a1aa', fontSize: '0.9rem' }}>
                 No saved product lists found on the server. Save your current list to see it here!
               </div>
             ) : (
-              <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '350px', overflowY: 'auto' }}>
                 {savedLists.map((list) => (
                   <div
                     key={list.id}
                     onClick={() => handleLoadList(list)}
-                    className="p-4 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 cursor-pointer transition flex items-center justify-between"
+                    style={{ padding: '12px 16px', backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                   >
                     <div>
-                      <h4 className="font-bold text-white text-sm">{list.name}</h4>
-                      <p className="text-xs text-slate-400 mt-0.5">
+                      <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>{list.name}</h4>
+                      <p style={{ fontSize: '0.75rem', color: '#a1a1aa', margin: '4px 0 0 0' }}>
                         Date: {list.date} | Items: {list.total_items_count} ({list.total_quantity} pcs)
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <div className="text-xs font-bold text-emerald-400">৳{list.total_price_bdt.toLocaleString()}</div>
-                        <div className="text-[10px] text-amber-400">{list.total_weight_kg} kg</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#34d399' }}>৳{list.total_price_bdt.toLocaleString()}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#fbbf24' }}>{list.total_weight_kg} kg</div>
                       </div>
 
                       <button
                         onClick={(e) => handleDeleteSavedList(list.id, e)}
-                        className="p-1.5 rounded bg-slate-900 hover:bg-red-950 text-red-400 transition"
+                        style={{ padding: '6px', backgroundColor: '#27272a', border: 'none', borderRadius: '6px', color: '#f87171', cursor: 'pointer' }}
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 style={{ width: '16px', height: '16px' }} />
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
+
           </div>
         </div>
       )}
@@ -1081,30 +1170,7 @@ export default function ProductListBuilder({
       {/* ------------------------------------------------------------- */}
       {/* 📄 A4 FORMATTED PRINT & PDF DOCUMENT TEMPLATE */}
       {/* ------------------------------------------------------------- */}
-      <div className="hidden print:block">
-        <style type="text/css" media="print">{`
-          @page {
-            size: A4 portrait;
-            margin: 12mm 12mm 12mm 12mm;
-          }
-          body {
-            background-color: #ffffff !important;
-            color: #000000 !important;
-            font-family: Arial, Helvetica, sans-serif !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-          #a4-pdf-content {
-            display: block !important;
-            background-color: #ffffff !important;
-            color: #000000 !important;
-          }
-        `}</style>
-      </div>
-
-      {/* Rendered Container for html2pdf.js & A4 Printing */}
-      <div className="hidden print:block">
+      <div style={{ display: 'none' }}>
         <div
           id="a4-pdf-content"
           style={{
@@ -1245,6 +1311,7 @@ export default function ProductListBuilder({
           </div>
         </div>
       </div>
+
     </div>
   );
 }
