@@ -1,4 +1,4 @@
-PROJECT: SourceIQ, product sourcing, price comparison and costing tool
+PROJECT: SourceIQ, product sourcing, price comparison, local BD market benchmarking and costing tool
 for a Bangladesh-based importer. RESEARCH ONLY.
 
 STACK: Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2 + Alembic,
@@ -15,6 +15,9 @@ RULES:
 - All money uses Decimal, never float. Store original currency + BDT.
 - No secrets in code. Read from environment variables only (e.g. GEMINI_API_KEY).
 - Every platform sits behind a common ProductConnector interface.
+- Local BD Market discovery (Daraz, FB Shops, IG, TikTok, local retail)
+  must be benchmarked to calculate local retail market value, gross margin %,
+  and net profit per unit against total landed cost.
 - Use official APIs or licensed data providers only. Do NOT bypass
   logins, CAPTCHAs or anti-bot protection.
 - Every quote stores the exchange rate and shipping rates used.

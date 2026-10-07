@@ -1,6 +1,6 @@
 # SourceIQ: Build Guide for Google Antigravity (Research & Comparison Only)
 
-A sourcing and costing system: text and image search across AliExpress, 1688 and Pinduoduo; automatic landed-cost breakdown using **your** RMB→BDT rate and **your** per-kg weight rates; suggested retail and wholesale prices; and a PDF quote slip. **It does not place orders.** You open the product link and buy manually. It works on **web and mobile** from one codebase (a responsive, installable web app / PWA).
+A sourcing, price comparison, local market benchmarking and costing system: text and image search across AliExpress, 1688 and Pinduoduo; local Bangladesh market price discovery (Daraz, Facebook Pages/Shops, Instagram, TikTok, local e-commerce & offline retail); automatic landed-cost breakdown using **your** RMB→BDT rate and **your** per-kg weight rates; suggested retail/wholesale prices and actual local market profit/gross margin calculations; and a PDF quote slip. **It does not place orders.** You open the product link and buy manually. It works on **web and mobile** from one codebase (a responsive, installable web app / PWA).
 
 **How to use this guide:** do one phase at a time. Finish its "Check" before moving on.
 
@@ -15,7 +15,8 @@ A sourcing and costing system: text and image search across AliExpress, 1688 and
 | AliExpress | AliExpress Open Platform developer account (product search, image search) | Third-party data provider |
 | 1688 | 1688 Open Platform, or a provider such as TMAPI / Onebound (text + image search) | Provider only |
 | Pinduoduo | Third-party data provider | Leave out in v1 |
-| Gemini API | Google Gemini API key (`google-genai` SDK for translation, vision, matching, weight estimate) | none |
+| Gemini API | Google Gemini API key (`google-genai` SDK for translation, vision, matching, weight estimate, local BD market search/extraction) | none |
+| BD Market Data | Web search / SerpAPI / Custom web scraper for local BD sites & social media (Daraz, FB, IG, TikTok) | Gemini Grounded Search + Mock Data |
 | Currency (optional) | Any live FX API for auto mode | Manual rate only |
 
 No order APIs, payment accounts, or buying-agent connection are needed. Build with **mock data** while approvals are pending.
@@ -31,7 +32,7 @@ No order APIs, payment accounts, or buying-agent connection are needed. Build wi
 ### A3. Project rules (paste into `.agents/rules/` first)
 
 ```
-PROJECT: SourceIQ, product sourcing, price comparison and costing tool
+PROJECT: SourceIQ, product sourcing, price comparison, local BD market benchmarking and costing tool
 for a Bangladesh-based importer. RESEARCH ONLY.
 
 STACK: Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2 + Alembic,
@@ -48,6 +49,9 @@ RULES:
 - All money uses Decimal, never float. Store original currency + BDT.
 - No secrets in code. Read from environment variables only (e.g. GEMINI_API_KEY).
 - Every platform sits behind a common ProductConnector interface.
+- Local BD Market discovery (Daraz, FB Shops, IG, TikTok, local retail)
+  must be benchmarked to calculate local retail market value, gross margin %,
+  and net profit per unit against total landed cost.
 - Use official APIs or licensed data providers only. Do NOT bypass
   logins, CAPTCHAs or anti-bot protection.
 - Every quote stores the exchange rate and shipping rates used.
@@ -92,19 +96,21 @@ Add tests.
 
 **Check:** change the rate, and an old saved quote does **not** change.
 
-### Phase 3: Connectors with mock mode
+### Phase 3: Connectors (China & BD Market) with mock mode
 
 ```
 Define abstract ProductConnector: search(query), search_by_image(image_url),
 get_details(id). Product model: platform, title_original, title_en, price,
 currency, moq, images, url, seller_rating, weight_kg (nullable),
-dimensions, raw_id. Implement AliExpressConnector (official API),
-Connector1688 and ConnectorPDD (via configurable provider base URL + key).
+dimensions, raw_id.
+Implement Sourcing Connectors: AliExpressConnector, Connector1688, ConnectorPDD.
+Implement BDMarketConnector: search local BD market value across Daraz BD,
+Facebook Pages/Shops, Instagram, TikTok seller posts, and offline retail benchmarks.
 Each has a MOCK mode with realistic sample data. Add Redis caching (short
 TTL), retries with backoff, timeouts, and per-platform rate limiting.
 ```
 
-**Check:** in mock mode, one search returns results from all three platforms.
+**Check:** search query returns sourcing listings (AliExpress/1688/PDD) AND local BD market prices (Daraz, FB, IG, TikTok, local store benchmark).
 
 ### Phase 4: Cost engine
 
@@ -122,26 +128,37 @@ Write unit tests with at least 5 hand-calculated examples.
 
 **Check:** compare 3 results with a real past shipment of yours and adjust the config tables until they match.
 
-### Phase 5: Pricing engine
+### Phase 5: Pricing & Market Margin Engine
 
 ```
-Build PricingEngine: target margin % per category, rounding rule (e.g.
-nearest ৳10), suggested retail and wholesale price, profit per unit,
-margin %, break-even quantity, manual override. Add tests.
+Build PricingEngine:
+- Inputs: Landed Cost per unit (from CostEngine), local BD market price benchmarks
+  (Daraz, FB Pages, IG, TikTok, local offline retail).
+- Calculates:
+  1. Average & Range of Local BD Market Retail Price (৳).
+  2. Potential Net Profit per unit (Local BD Market Price - Landed Cost).
+  3. Potential Gross Margin % ((Local BD Market Price - Landed Cost) / Local BD Market Price * 100).
+  4. ROI % ((Profit / Landed Cost) * 100).
+  5. Suggested Retail & Wholesale Price based on target margin % with rounding rules.
+  6. Break-even quantity.
+Add unit tests with mock local market data.
 ```
 
-### Phase 6: Text search API
+**Check:** local BD market price ৳1,500 vs Landed Cost ৳600 accurately computes Profit = ৳900, Gross Margin = 60%, ROI = 150%.
+
+### Phase 6: Text search API with BD Market Comparison
 
 ```
 POST /search {query, quantity, shipping_method, rate_override?}
-Run all connectors in parallel, skip failed platforms with a warning,
-rank by landed cost per unit, return product links + full breakdown +
-a "lowest price" highlight.
+Run all sourcing connectors AND local BD market connectors in parallel,
+skip failed platforms with a warning, rank by landed cost per unit,
+match with local BD market benchmark prices, return product links + full cost breakdown +
+local BD market prices (Daraz, FB, IG, TikTok) + profit & gross margin analysis.
 ```
 
-**Check:** results are sorted lowest first, and one failing platform does not break the search.
+**Check:** results display sourcing prices alongside local BD selling prices and calculated margins.
 
-### Phase 7: Image search
+### Phase 7: Image search & Vision Matching
 
 ```
 Add POST /search/image (multipart). Validate type (jpg/png/webp/heic; convert HEIC to JPEG on the server),
@@ -149,19 +166,20 @@ max 5MB after the client has resized large phone photos to about 1600px,
 verify real MIME type, strip EXIF, store privately with a random name and
 a signed URL expiring in 1 hour, auto-delete after 3 days.
 Run platform search_by_image in parallel, plus a Gemini vision step that
-describes the product in English and Chinese and generates keywords for a
-text-search fallback. Merge results.
+describes the product in English, Chinese, and Bengali keywords for text-search fallback across
+China suppliers AND local BD market stores. Merge results.
 ```
 
-**Check:** a renamed `.exe` is rejected, an iPhone HEIC photo works, and an uploaded photo returns merged results.
+**Check:** uploaded photo returns sourcing options and matching local BD market listings.
 
-### Phase 8: AI matching and translation
+### Phase 8: AI matching, translation & local market price extraction
 
 ```
-Use the Gemini API (`google-genai` SDK) to translate Chinese titles, normalize specs, extract
-weight/dimensions from descriptions, and group listings that are the same
-product. Return a confidence score (0-100) and flag low confidence for
-manual review. Cache AI results. Never send secrets to the AI.
+Use the Gemini API (`google-genai` SDK) to translate Chinese titles, normalize specs,
+extract weight/dimensions from descriptions, group listings of the same product,
+and extract price points from local BD social media (FB/IG/TikTok post captions) & e-commerce descriptions.
+Return a confidence score (0-100) and flag low confidence for manual review.
+Cache AI results. Never send secrets to the AI.
 ```
 
 ### Phase 9: Dashboard (web + mobile, one codebase)
@@ -170,33 +188,28 @@ manual review. Cache AI results. Never send secrets to the AI.
 Build the Next.js dashboard as a mobile-first responsive PWA:
 - Login; search screen with text box, quantity, shipping toggle (air/sea),
   rate field pre-filled from Settings.
-- Image search: a button that opens the phone camera or gallery
-  (<input type="file" accept="image/*" capture>), drag-and-drop on desktop.
-  Resize and compress the photo in the browser before upload.
-- Results: a table on desktop, a card list on mobile (platform, price,
-  product link, confidence badge, landed cost per unit).
-- Cost breakdown: side drawer on desktop, bottom sheet on mobile, with
-  editable weight and live recalculation.
+- Image search: camera/gallery button, drag-and-drop on desktop.
+- Results: sourcing cards (AliExpress, 1688, PDD) side-by-side with
+  Local BD Market Value Card (Daraz, FB, IG, TikTok, local retail).
+- Landed Cost & Profit Drawer: live edit weight, view Landed Cost vs Local Market Price,
+  estimated profit per unit, gross margin %, ROI %.
 - "Save to shortlist", Settings page, loading skeletons, clear error states.
-- PWA: manifest, icons, service worker, "Add to home screen" support,
-  offline view of the shortlist and saved quotes.
-- Touch targets 44px+, numeric keyboards for rate/weight fields,
-  safe-area padding, light and dark mode.
+- PWA: manifest, icons, service worker, "Add to home screen" support.
 ```
 
-**Check:** at 360px, 768px and desktop widths nothing scrolls sideways, you can take a photo and search with it on a real phone, and the app installs to the home screen.
+**Check:** at 360px and desktop widths, landed cost vs local BD market price and profit margin are clearly visible on card details.
 
-### Phase 10: Shortlist and quote slip
+### Phase 10: Shortlist and quote slip with Market Profit Summary
 
 ```
 Add a shortlist: save selected products with their quote snapshot (rates,
-weights, breakdown, selling price) and a note. Generate a PDF quote slip
-(date, search term, products with links, quantity, rate snapshot, full cost
-breakdown, total landed cost, suggested retail/wholesale price) and a CSV
-export. Add a price re-check button that refreshes a saved product's price.
+weights, landed breakdown, local BD market prices, selling price, profit margin) and notes.
+Generate a PDF quote slip (date, search term, products with links, quantity, rate snapshot,
+full cost breakdown, local BD market benchmark, total landed cost, gross margin %, profit per unit)
+and CSV export. Add price re-check button.
 ```
 
-**Check:** the PDF matches the screen to the taka, and re-checking a price creates a new snapshot without changing the old one.
+**Check:** the PDF displays total landed cost, local BD market price, gross margin %, and net profit per unit.
 
 ### Phase 11: Security hardening
 
@@ -207,15 +220,11 @@ headers, dependency audit (pip-audit, npm audit), 2FA for admin, backups.
 Fix every finding and add tests.
 ```
 
-**Check:** no endpoint works without login, and a normal user cannot reach admin settings.
-
 ### Phase 12: Tests, CI and deployment
 
 ```
-Add integration tests for the full flow (search -> cost -> shortlist ->
-slip). Add GitHub Actions CI (lint, type check, tests, audit). Create a
-production Docker setup with HTTPS, environment-based config, logging,
-error monitoring, and daily database backups.
+Add integration tests for the full flow (search -> cost -> BD market match -> margin -> shortlist -> slip).
+Add GitHub Actions CI (lint, type check, tests, audit). Create production Docker setup.
 ```
 
 ---
@@ -235,11 +244,9 @@ error monitoring, and daily database backups.
 ## Part D: Common risks
 
 - **Prices can change before you buy.** Re-check the price on the platform page just before purchasing.
-- **Duty rates change.** Keep them in editable tables and confirm with your customs agent or clearing house.
-- **Weight estimates can be wrong.** Always enter your own weight when you know it.
-- **Image search finds similar, not identical items.** Check the confidence badge and the product page.
-- **1688 and Pinduoduo access is limited.** Use official or licensed providers only.
-- **PWA limits on iPhone.** Home-screen install works, but push notifications and background features are more limited than on Android. This app doesn't need them.
+- **Local BD social media prices fluctuate.** Social media sellers (FB/IG/TikTok) often quote prices in captions or inbox; Gemini extraction helps parse published post prices.
+- **Duty rates change.** Keep them in editable tables and confirm with your customs agent.
+- **Weight estimates can be wrong.** Always enter your own weight when known.
 - **Phone photos are large and may be HEIC.** Compress on the device and convert on the server.
 
 ## Timeline
