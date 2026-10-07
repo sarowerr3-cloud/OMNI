@@ -1,4 +1,5 @@
 from decimal import Decimal, ROUND_HALF_UP
+from typing import Optional
 from backend.app.schemas.product import ProductBase, CostBreakdown
 
 
@@ -14,7 +15,7 @@ class CostEngine:
         duty_vat_percent: Decimal = Decimal("15.00"),    # 15% estimated duty/tax
         agent_fee_percent: Decimal = Decimal("5.00")      # 5% sourcing agent fee
     ):
-        self.rate_rmb_bdt = rate_rmb_bdt
+        self.default_rate_rmb_bdt = rate_rmb_bdt
         self.rate_usd_bdt = rate_usd_bdt
         self.air_rate_per_kg = air_rate_per_kg
         self.sea_rate_per_kg = sea_rate_per_kg
@@ -26,11 +27,15 @@ class CostEngine:
         product: ProductBase,
         quantity: int = 10,
         shipping_method: str = "air",
-        user_weight_kg: float = None
+        user_weight_kg: Optional[float] = None,
+        custom_rate_rmb_bdt: Optional[Decimal] = None
     ) -> CostBreakdown:
+        # Use user-defined RMB exchange rate if provided, otherwise default rate
+        effective_rmb_rate = custom_rate_rmb_bdt if custom_rate_rmb_bdt is not None else self.default_rate_rmb_bdt
+
         # Convert original item price to BDT
         if product.currency == "RMB":
-            unit_price_bdt = product.price * self.rate_rmb_bdt
+            unit_price_bdt = product.price * effective_rmb_rate
         elif product.currency == "USD":
             unit_price_bdt = product.price * self.rate_usd_bdt
         else:

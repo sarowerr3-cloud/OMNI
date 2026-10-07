@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Image from 'next/image';
+import { useState, useEffect, useRef } from 'react';
 
 interface SourcedProductResult {
   product: {
@@ -50,12 +49,23 @@ interface LocalMarketBenchmark {
 
 export default function Home() {
   const [health, setHealth] = useState<any>(null);
+  const [searchMode, setSearchMode] = useState<'text' | 'image'>('text');
   const [query, setQuery] = useState('Smart Watch Ultra');
   const [quantity, setQuantity] = useState(10);
   const [shippingMethod, setShippingMethod] = useState<'air' | 'sea'>('air');
   const [weightKg, setWeightKg] = useState<string>('0.35');
+  const [rateRmbBdt, setRateRmbBdt] = useState<string>('16.50');
+  
+  // Image Upload State
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [loading, setLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<{
+    query: string;
+    rate_rmb_bdt: number;
+    image_analysis?: any;
     sourcing_results: SourcedProductResult[];
     bd_market_benchmarks: LocalMarketBenchmark[];
   } | null>(null);
@@ -69,24 +79,54 @@ export default function Home() {
       .catch((err) => console.error('API health fetch failed:', err));
   }, [apiUrl]);
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setSelectedFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+    }
+  };
+
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!query.trim()) return;
+
+    if (searchMode === 'text' && !query.trim()) return;
+    if (searchMode === 'image' && !selectedFile) {
+      alert('Please select or capture a product image to search.');
+      return;
+    }
 
     setLoading(true);
     try {
-      const res = await fetch(`${apiUrl}/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query,
-          quantity: Number(quantity),
-          shipping_method: shippingMethod,
-          user_weight_kg: weightKg ? Number(weightKg) : null,
-        }),
-      });
-      const data = await res.json();
-      setSearchResults(data);
+      if (searchMode === 'text') {
+        const res = await fetch(`${apiUrl}/search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query,
+            quantity: Number(quantity),
+            shipping_method: shippingMethod,
+            user_weight_kg: weightKg ? Number(weightKg) : null,
+            rate_rmb_bdt: rateRmbBdt ? Number(rateRmbBdt) : 16.50,
+          }),
+        });
+        const data = await res.json();
+        setSearchResults(data);
+      } else {
+        const formData = new FormData();
+        formData.append('file', selectedFile!);
+        formData.append('quantity', String(quantity));
+        formData.append('shipping_method', shippingMethod);
+        if (weightKg) formData.append('user_weight_kg', weightKg);
+        if (rateRmbBdt) formData.append('rate_rmb_bdt', rateRmbBdt);
+
+        const res = await fetch(`${apiUrl}/search/image`, {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        setSearchResults(data);
+      }
     } catch (err) {
       console.error('Search failed:', err);
     } finally {
@@ -156,13 +196,13 @@ export default function Home() {
           />
           <span>API: {health?.status === 'ok' ? 'Connected' : 'Offline'}</span>
           <span style={{ color: '#52525b' }}>|</span>
-          <span style={{ color: '#dc2626', fontWeight: 'bold' }}>Gemini AI</span>
+          <span style={{ color: '#dc2626', fontWeight: 'bold' }}>Gemini AI Vision</span>
         </div>
       </header>
 
       {/* Main Container */}
       <main style={{ maxWidth: '1100px', margin: '0 auto' }}>
-        {/* Search & Controls Section */}
+        {/* Search Mode Selector & Panel */}
         <section
           style={{
             background: '#18181b',
@@ -173,43 +213,160 @@ export default function Home() {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
           }}
         >
-          <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search product (e.g., Smart Watch, Wireless Earbuds, Bag)..."
-                style={{
-                  flex: 1,
-                  minWidth: '260px',
-                  background: '#09090b',
-                  border: '1px solid #3f3f46',
-                  borderRadius: '10px',
-                  padding: '12px 16px',
-                  fontSize: '1rem',
-                  outline: 'none',
-                }}
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                style={{
-                  background: 'linear-gradient(135deg, #dc2626 0%, #990000 100%)',
-                  color: '#ffffff',
-                  fontWeight: 700,
-                  padding: '12px 28px',
-                  borderRadius: '10px',
-                  fontSize: '1rem',
-                  boxShadow: '0 0 12px rgba(220, 38, 38, 0.4)',
-                }}
-              >
-                {loading ? 'Searching OMNI...' : '🔍 Search Product'}
-              </button>
-            </div>
+          {/* Mode Switch Tabs */}
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
+            <button
+              type="button"
+              onClick={() => setSearchMode('text')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '8px',
+                background: searchMode === 'text' ? '#dc2626' : '#27272a',
+                color: '#ffffff',
+                fontWeight: 600,
+                fontSize: '0.9rem',
+              }}
+            >
+              🔍 Text Search
+            </button>
+            <button
+              type="button"
+              onClick={() => setSearchMode('image')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '8px',
+                background: searchMode === 'image' ? '#dc2626' : '#27272a',
+                color: '#ffffff',
+                fontWeight: 600,
+                fontSize: '0.9rem',
+              }}
+            >
+              📷 Image Search (Gemini Vision)
+            </button>
+          </div>
 
-            {/* Config Controls Grid */}
+          <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {searchMode === 'text' ? (
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search product (e.g., Smart Watch, Wireless Earbuds, Bag)..."
+                  style={{
+                    flex: 1,
+                    minWidth: '260px',
+                    background: '#09090b',
+                    border: '1px solid #3f3f46',
+                    borderRadius: '10px',
+                    padding: '12px 16px',
+                    fontSize: '1rem',
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{
+                    background: 'linear-gradient(135deg, #dc2626 0%, #990000 100%)',
+                    color: '#ffffff',
+                    fontWeight: 700,
+                    padding: '12px 28px',
+                    borderRadius: '10px',
+                    fontSize: '1rem',
+                    boxShadow: '0 0 12px rgba(220, 38, 38, 0.4)',
+                  }}
+                >
+                  {loading ? 'Searching OMNI...' : '🔍 Search Product'}
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    border: '2px dashed #dc2626',
+                    borderRadius: '12px',
+                    padding: '1.5rem',
+                    textAlign: 'center',
+                    background: '#09090b',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                  />
+                  {previewUrl ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                      <img
+                        src={previewUrl}
+                        alt="Product Upload Preview"
+                        style={{ maxHeight: '140px', borderRadius: '8px', objectFit: 'contain' }}
+                      />
+                      <span style={{ fontSize: '0.85rem', color: '#22c55e', fontWeight: 600 }}>
+                        ✓ {selectedFile?.name} Selected
+                      </span>
+                    </div>
+                  ) : (
+                    <div>
+                      <p style={{ fontSize: '1.1rem', fontWeight: 600, color: '#f8fafc', marginBottom: '4px' }}>
+                        📷 Click or Drag Product Photo Here
+                      </p>
+                      <p style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>
+                        Supports camera photos, JPG, PNG, WEBP, HEIC
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading || !selectedFile}
+                  style={{
+                    background: selectedFile
+                      ? 'linear-gradient(135deg, #dc2626 0%, #990000 100%)'
+                      : '#3f3f46',
+                    color: '#ffffff',
+                    fontWeight: 700,
+                    padding: '12px 28px',
+                    borderRadius: '10px',
+                    fontSize: '1rem',
+                    boxShadow: selectedFile ? '0 0 12px rgba(220, 38, 38, 0.4)' : 'none',
+                  }}
+                >
+                  {loading ? 'Analyzing with Gemini Vision...' : '📷 Search by Image'}
+                </button>
+              </div>
+            )}
+
+            {/* Config Controls Grid: RMB Exchange Rate, Quantity, Shipping, Weight */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', paddingTop: '0.5rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: '#dc2626', fontWeight: 700, marginBottom: '4px' }}>
+                  💱 RMB → BDT Rate (৳)
+                </label>
+                <input
+                  type="number"
+                  step="0.05"
+                  value={rateRmbBdt}
+                  onChange={(e) => setRateRmbBdt(e.target.value)}
+                  placeholder="16.50"
+                  style={{
+                    width: '100%',
+                    background: '#09090b',
+                    border: '1px solid #dc2626',
+                    borderRadius: '8px',
+                    padding: '8px 12px',
+                    fontWeight: 700,
+                    color: '#ffffff',
+                  }}
+                />
+              </div>
+
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', color: '#a1a1aa', marginBottom: '4px' }}>
                   Quantity (Units)
@@ -247,7 +404,7 @@ export default function Home() {
                       fontSize: '0.85rem',
                     }}
                   >
-                    ✈️ Air Freight
+                    ✈️ Air
                   </button>
                   <button
                     type="button"
@@ -262,7 +419,7 @@ export default function Home() {
                       fontSize: '0.85rem',
                     }}
                   >
-                    🚢 Sea Cargo
+                    🚢 Sea
                   </button>
                 </div>
               </div>
@@ -292,10 +449,38 @@ export default function Home() {
         {/* Results Section */}
         {searchResults && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            {/* Gemini Vision Analysis Banner (if image search) */}
+            {searchResults.image_analysis && (
+              <div
+                style={{
+                  background: '#18181b',
+                  borderRadius: '12px',
+                  padding: '1rem 1.25rem',
+                  border: '1px solid #dc2626',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                }}
+              >
+                <span style={{ fontSize: '1.5rem' }}>🤖</span>
+                <div>
+                  <h4 style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.95rem' }}>
+                    Gemini Vision AI Image Identification
+                  </h4>
+                  <p style={{ fontSize: '0.85rem', color: '#e2e8f0' }}>
+                    {searchResults.image_analysis.description_en}
+                  </p>
+                  <p style={{ fontSize: '0.75rem', color: '#a1a1aa', marginTop: '2px' }}>
+                    Identified Keywords: {searchResults.image_analysis.keywords_en?.join(', ')}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* 1. Sourcing Listings & Landed Cost Breakdown */}
             <div>
               <h2 style={{ fontSize: '1.25rem', color: '#ffffff', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ color: '#dc2626' }}>🇨🇳</span> Sourcing Suppliers & Landed Cost Breakdown
+                <span style={{ color: '#dc2626' }}>🇨🇳</span> Sourcing Suppliers & Landed Cost (Rate: ৳{searchResults.rate_rmb_bdt}/RMB)
               </h2>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
@@ -353,7 +538,7 @@ export default function Home() {
                           </span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                          <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Total Item Price (BDT):</span>
+                          <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Total Item Price (BDT @ ৳{searchResults.rate_rmb_bdt}):</span>
                           <span>৳{res.cost_breakdown.item_price_bdt.toLocaleString()}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
