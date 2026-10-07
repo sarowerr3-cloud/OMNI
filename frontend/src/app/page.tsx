@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import ProductListBuilder, { ProductItem } from '@/components/ProductListBuilder';
 
 interface SourcedProductResult {
   product: {
@@ -62,7 +63,8 @@ interface LocalMarketBenchmark {
 
 export default function Home() {
   const [health, setHealth] = useState<any>(null);
-  const [searchMode, setSearchMode] = useState<'text' | 'image' | 'manual'>('text');
+  const [searchMode, setSearchMode] = useState<'text' | 'image' | 'manual' | 'list'>('text');
+  const [productListItems, setProductListItems] = useState<ProductItem[]>([]);
   
   // Search Parameters
   const [query, setQuery] = useState('Smart Watch Ultra');
@@ -433,6 +435,56 @@ export default function Home() {
     };
   };
 
+  const addSourcedProductToList = (res: SourcedProductResult, idx: number) => {
+    const math = computeCardMath(res, idx);
+    const title = res.product.title_en || res.product.title_original || 'Sourced Product';
+    const imgUrl = res.product.images && res.product.images.length > 0 ? res.product.images[0] : '';
+    const weightKg = Number(math.override.weight) || 0.35;
+    const qty = Number(math.override.qty) || 1;
+    const priceBdt = math.unitPriceBdt;
+
+    const newItem: ProductItem = {
+      id: `prod_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      title,
+      details: `${res.product.platform} Supplier (${res.product.seller_rating || 4.8}★)`,
+      price: res.product.price,
+      currency: res.product.currency || 'RMB',
+      price_bdt: priceBdt,
+      weight_kg: weightKg,
+      quantity: qty,
+      image_url: imgUrl,
+      product_url: res.product.url,
+      platform: res.product.platform
+    };
+
+    setProductListItems((prev) => [...prev, newItem]);
+    showToast(`✅ Added "${title.substring(0, 25)}..." to Product List!`);
+  };
+
+  const addManualProductToList = () => {
+    const rmbPrice = Number(manualRmbPrice) || 28;
+    const rate = Number(manualRateRmb) || 20;
+    const priceBdt = rmbPrice * rate;
+    const qty = Math.max(1, Number(manualQty) || 1);
+    const weightVal = Number(manualWeightVal) || 350;
+    const weightKg = manualWeightUnit === 'gm' ? weightVal / 1000.0 : weightVal;
+
+    const newItem: ProductItem = {
+      id: `prod_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      title: query.trim() || 'Manual Sourced Item',
+      details: `Manual Sourced (Rate: ৳${rate}/RMB)`,
+      price: rmbPrice,
+      currency: 'RMB',
+      price_bdt: priceBdt,
+      weight_kg: Number(weightKg.toFixed(3)),
+      quantity: qty,
+      platform: '1688'
+    };
+
+    setProductListItems((prev) => [...prev, newItem]);
+    showToast(`✅ Added "${newItem.title}" to Product List!`);
+  };
+
   const sourcingResults = searchResults?.sourcing_results || [];
   const bdBenchmarks = searchResults?.bd_market_benchmarks || [];
   const manualMath = computeManualMath();
@@ -573,10 +625,43 @@ export default function Home() {
           >
             🧮 Manual Landed Cost Calculator
           </button>
+
+          <button
+            type="button"
+            onClick={() => setSearchMode('list')}
+            style={{
+              padding: '10px 18px',
+              borderRadius: '10px',
+              background: searchMode === 'list' ? '#dc2626' : '#18181b',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: '0.95rem',
+              border: '1px solid #27272a',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <span>📋 Product List Builder</span>
+            {productListItems.length > 0 && (
+              <span
+                style={{
+                  background: searchMode === 'list' ? '#ffffff' : '#dc2626',
+                  color: searchMode === 'list' ? '#dc2626' : '#ffffff',
+                  borderRadius: '9999px',
+                  padding: '2px 8px',
+                  fontSize: '0.75rem',
+                  fontWeight: 800
+                }}
+              >
+                {productListItems.length}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* Section A: Text & Image Search Panel */}
-        {searchMode !== 'manual' && (
+        {(searchMode === 'text' || searchMode === 'image') && (
           <section
             style={{
               background: '#18181b',
@@ -875,6 +960,26 @@ export default function Home() {
               </div>
 
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={addManualProductToList}
+                  style={{
+                    background: '#16a34a',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '8px 16px',
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 0 10px rgba(22, 163, 74, 0.3)',
+                  }}
+                >
+                  ➕ Add to Product List
+                </button>
                 <button
                   type="button"
                   onClick={copyManualQuotation}
@@ -1669,26 +1774,52 @@ export default function Home() {
                         )}
                       </div>
 
-                      {res.product?.url && (
-                        <a
-                          href={res.product.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => addSourcedProductToList(res, idx)}
                           style={{
-                            display: 'block',
-                            textAlign: 'center',
-                            background: '#27272a',
+                            flex: 1,
+                            minWidth: '140px',
+                            background: '#dc2626',
                             color: '#ffffff',
-                            padding: '10px',
+                            border: 'none',
                             borderRadius: '8px',
-                            fontWeight: 600,
-                            fontSize: '0.9rem',
-                            textDecoration: 'none',
+                            padding: '10px',
+                            fontWeight: 700,
+                            fontSize: '0.85rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
                           }}
                         >
-                          🔗 Buy Manually on {res.product.platform}
-                        </a>
-                      )}
+                          ➕ Add to Product List
+                        </button>
+
+                        {res.product?.url && (
+                          <a
+                            href={res.product.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              flex: 1,
+                              minWidth: '140px',
+                              textAlign: 'center',
+                              background: '#27272a',
+                              color: '#ffffff',
+                              padding: '10px',
+                              borderRadius: '8px',
+                              fontWeight: 600,
+                              fontSize: '0.85rem',
+                              textDecoration: 'none',
+                            }}
+                          >
+                            🔗 Buy Manually on {res.product.platform}
+                          </a>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -1733,6 +1864,18 @@ export default function Home() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Section C: Product List Builder */}
+        {searchMode === 'list' && (
+          <section style={{ marginBottom: '2rem' }}>
+            <ProductListBuilder
+              items={productListItems}
+              onUpdateItems={setProductListItems}
+              apiUrl={apiUrl}
+              showToast={showToast}
+            />
+          </section>
         )}
       </main>
 

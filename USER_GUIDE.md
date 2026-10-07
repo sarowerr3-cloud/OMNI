@@ -77,8 +77,27 @@ SourceIQ benchmarks the product against selling prices on:
 
 ---
 
-## 🛠️ Step 4: System Architecture & Build Guide
+## 📋 Step 5: Creating Product Lists & Exporting A4 PDF
+
+SourceIQ includes a smart, interactive **Product List Builder** designed for importers and sourcing agents:
+
+### Features:
+1. **List Metadata**: Specify **List Name** (e.g. *Electronics Sourcing List Q4*) and **List Date** at the very top.
+2. **Sequential Product Addition**:
+   - Add items sequentially via the form (Title, Details, Price in BDT/RMB/USD, Weight in kg/gm, Direct Link, Image, Quantity).
+   - Or click **`➕ Add to Product List`** directly on any search card or calculator result for instant 1-click addition.
+3. **Live Totals Calculation**:
+   - Real-time calculation of **Total Price (BDT)** and **Total Weight (in kg)** across all items.
+4. **Saving & PDF Export**:
+   - **Save List**: Persists product lists to the backend API & browser storage.
+   - **Download A4 PDF**: Generates a clean, professionally formatted A4 paper PDF with product thumbnails, direct clickable product links, weight (kg), price breakdown, and summary totals.
+   - **Export CSV & Text Summary**: Quickly export list to CSV for Excel or copy text for WhatsApp/email.
+
+---
+
+## 🛠️ Step 6: System Architecture & Build Guide
 
 For complete technical documentation, database schemas, and phase progression, refer to:
 - 📖 [BUILD_GUIDE.md](file:///f:/OMNI/BUILD_GUIDE.md) — Technical specification & architecture rules
 - 📜 [.agents/rules/project_rules.md](file:///f:/OMNI/.agents/rules/project_rules.md) — Importer business logic constraints
+
