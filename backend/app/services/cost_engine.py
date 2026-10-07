@@ -8,7 +8,7 @@ class CostEngine:
 
     def __init__(
         self,
-        rate_rmb_bdt: Decimal = Decimal("16.50"),
+        rate_rmb_bdt: Decimal = Decimal("20.00"),
         rate_usd_bdt: Decimal = Decimal("120.00"),
         air_rate_per_kg: Decimal = Decimal("1000.00"),  # ৳1000/kg by air
         sea_rate_per_kg: Decimal = Decimal("300.00"),   # ৳300/kg by sea

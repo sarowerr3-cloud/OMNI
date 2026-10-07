@@ -22,7 +22,7 @@ class SearchRequest(BaseModel):
     quantity: int = 10
     shipping_method: str = "air"  # "air" or "sea"
     user_weight_kg: Optional[float] = None
-    rate_rmb_bdt: Optional[Decimal] = Decimal("16.50")
+    rate_rmb_bdt: Optional[Decimal] = Decimal("20.00")
 
 
 class SourcedProductResult(BaseModel):
@@ -45,7 +45,7 @@ class SearchResponse(BaseModel):
 
 class ManualCalculatorRequest(BaseModel):
     unit_price_rmb: Decimal
-    rate_rmb_bdt: Decimal = Decimal("16.50")
+    rate_rmb_bdt: Decimal = Decimal("20.00")
     quantity: int = 10
     weight_value: float = 0.35
     weight_unit: str = "kg"  # "kg" or "gm"
@@ -89,7 +89,7 @@ async def search_products(req: SearchRequest):
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Search query cannot be empty")
 
-    rmb_rate = req.rate_rmb_bdt if req.rate_rmb_bdt and req.rate_rmb_bdt > 0 else Decimal("16.50")
+    rmb_rate = req.rate_rmb_bdt if req.rate_rmb_bdt and req.rate_rmb_bdt > 0 else Decimal("20.00")
 
     # Concurrent search across sourcing connectors + BD local market connector
     ali_task = aliexpress_connector.search(req.query)
@@ -164,7 +164,7 @@ async def search_products_by_image(
     quantity: int = Form(10),
     shipping_method: str = Form("air"),
     user_weight_kg: Optional[str] = Form(None),
-    rate_rmb_bdt: Optional[str] = Form("16.50")
+    rate_rmb_bdt: Optional[str] = Form("20.00")
 ):
     """
     Search product by uploading an Image. Uses Google Gemini Vision AI to identify product features,
@@ -205,11 +205,11 @@ async def search_products_by_image(
 
     # Parse numeric inputs safely
     try:
-        parsed_rate = Decimal(str(rate_rmb_bdt)) if rate_rmb_bdt else Decimal("16.50")
+        parsed_rate = Decimal(str(rate_rmb_bdt)) if rate_rmb_bdt else Decimal("20.00")
         if parsed_rate <= 0:
-            parsed_rate = Decimal("16.50")
+            parsed_rate = Decimal("20.00")
     except Exception:
-        parsed_rate = Decimal("16.50")
+        parsed_rate = Decimal("20.00")
 
     parsed_weight = None
     if user_weight_kg:
@@ -292,7 +292,7 @@ async def calculate_manual_landed_cost(req: ManualCalculatorRequest):
     and returns a line-by-line itemized BDT cost breakdown and profit analysis.
     """
     qty = max(1, req.quantity)
-    rate = req.rate_rmb_bdt if req.rate_rmb_bdt > 0 else Decimal("16.50")
+    rate = req.rate_rmb_bdt if req.rate_rmb_bdt > 0 else Decimal("20.00")
 
     # Calculate item price in BDT
     item_price_bdt = (req.unit_price_rmb * rate * Decimal(qty)).quantize(Decimal("0.01"))
