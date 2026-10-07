@@ -23,6 +23,7 @@ out/
 build/
 dist/
 .npm
+*.tsbuildinfo
 
 # IDE & OS
 .DS_Store

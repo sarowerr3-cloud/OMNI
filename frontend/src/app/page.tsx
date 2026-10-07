@@ -104,8 +104,38 @@ export default function Home() {
   const [cardOverrides, setCardOverrides] = useState<Record<number, { rmbRate: string; qty: number; weight: string; shipping: 'air' | 'sea'; selectedImgIdx: number; showVideo: boolean; showSpecs: boolean }>>({});
 
   const [aiStatus, setAiStatus] = useState<any>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 3500);
+  };
+
+  const applyPreset = (type: 'sample' | 'medium' | 'bulk_sea') => {
+    if (type === 'sample') {
+      setGlobalQuantity(5);
+      setGlobalShippingMethod('air');
+      setGlobalWeightKg('0.35');
+      setGlobalRateRmbBdt('16.50');
+      showToast('⚡ Applied Sample Preset: 5 Pcs | Air Shipping');
+    } else if (type === 'medium') {
+      setGlobalQuantity(50);
+      setGlobalShippingMethod('air');
+      setGlobalWeightKg('0.35');
+      setGlobalRateRmbBdt('16.50');
+      showToast('📦 Applied Medium Wholesale Preset: 50 Pcs | Air Shipping');
+    } else if (type === 'bulk_sea') {
+      setGlobalQuantity(500);
+      setGlobalShippingMethod('sea');
+      setGlobalWeightKg('0.35');
+      setGlobalRateRmbBdt('16.50');
+      showToast('🚢 Applied Bulk Container Preset: 500 Pcs | Sea Cargo');
+    }
+  };
 
   useEffect(() => {
     fetch(`${apiUrl}/health`)
@@ -487,39 +517,75 @@ export default function Home() {
           >
             <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {searchMode === 'text' ? (
-                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                  <input
-                    type="text"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search product (e.g., Smart Watch, Wireless Earbuds, Bag)..."
-                    style={{
-                      flex: 1,
-                      minWidth: '260px',
-                      background: '#09090b',
-                      border: '1px solid #3f3f46',
-                      borderRadius: '10px',
-                      padding: '12px 16px',
-                      fontSize: '1rem',
-                      outline: 'none',
-                    }}
-                  />
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    style={{
-                      background: 'linear-gradient(135deg, #dc2626 0%, #990000 100%)',
-                      color: '#ffffff',
-                      fontWeight: 700,
-                      padding: '12px 28px',
-                      borderRadius: '10px',
-                      fontSize: '1rem',
-                      boxShadow: '0 0 12px rgba(220, 38, 38, 0.4)',
-                    }}
-                  >
-                    {loading ? 'Searching OMNI...' : '🔍 Search Product'}
-                  </button>
-                </div>
+                <>
+                  <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <input
+                      type="text"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Search product (e.g., Smart Watch, Wireless Earbuds, Bag)..."
+                      style={{
+                        flex: 1,
+                        minWidth: '260px',
+                        background: '#09090b',
+                        border: '1px solid #3f3f46',
+                        borderRadius: '10px',
+                        padding: '12px 16px',
+                        fontSize: '1rem',
+                        outline: 'none',
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      style={{
+                        background: 'linear-gradient(135deg, #dc2626 0%, #990000 100%)',
+                        color: '#ffffff',
+                        fontWeight: 700,
+                        padding: '12px 28px',
+                        borderRadius: '10px',
+                        fontSize: '1rem',
+                        boxShadow: '0 0 12px rgba(220, 38, 38, 0.4)',
+                      }}
+                    >
+                      {loading ? 'Searching OMNI...' : '🔍 Search Product'}
+                    </button>
+                  </div>
+
+                  {/* Quick Trending Product Chips */}
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#a1a1aa', fontWeight: 600, marginRight: '4px' }}>🔥 Trending Searches:</span>
+                    {[
+                      { label: '⌚ Smart Watch', val: 'Smart Watch Ultra' },
+                      { label: '🎧 TWS Earbuds', val: 'Wireless Earbuds TWS' },
+                      { label: '👗 Ladies Bag', val: 'Ladies Leather Handbag' },
+                      { label: '⚡ Fast Charger', val: 'GaN Fast Charger 65W' },
+                      { label: '👟 Sports Shoes', val: 'Men Sports Running Shoes' },
+                      { label: '💄 Makeup Kit', val: 'Cosmetics Makeup Set' },
+                    ].map((chip, cIdx) => (
+                      <button
+                        key={cIdx}
+                        type="button"
+                        onClick={() => {
+                          setQuery(chip.val);
+                          showToast("Searching for " + chip.val + "...");
+                        }}
+                        style={{
+                          background: '#09090b',
+                          border: '1px solid #3f3f46',
+                          borderRadius: '9999px',
+                          padding: '4px 10px',
+                          fontSize: '0.75rem',
+                          color: '#f8fafc',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div
@@ -582,6 +648,32 @@ export default function Home() {
                   </button>
                 </div>
               )}
+
+              {/* Smart Importer Quick Presets Bar */}
+              <div style={{ background: '#09090b', padding: '0.75rem', borderRadius: '10px', border: '1px solid #27272a', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 800 }}>⚡ Smart Importer Presets:</span>
+                <button
+                  type="button"
+                  onClick={() => applyPreset('sample')}
+                  style={{ background: '#27272a', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 600 }}
+                >
+                  🧪 Sample Order (5 pcs | Air)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPreset('medium')}
+                  style={{ background: '#27272a', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 600 }}
+                >
+                  📦 Medium Batch (50 pcs | Air)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPreset('bulk_sea')}
+                  style={{ background: '#27272a', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 600 }}
+                >
+                  🚢 Sea Container (500 pcs | Sea)
+                </button>
+              </div>
 
               {/* Global Config Controls Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', paddingTop: '0.5rem' }}>
@@ -1347,6 +1439,31 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            background: '#18181b',
+            border: '1px solid #dc2626',
+            color: '#ffffff',
+            padding: '12px 20px',
+            borderRadius: '12px',
+            boxShadow: '0 10px 30px rgba(220, 38, 38, 0.4)',
+            zIndex: 9999,
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 }
