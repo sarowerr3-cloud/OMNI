@@ -393,7 +393,7 @@ export default function Home() {
       shipping: globalShippingMethod,
     };
 
-    const rmbRate = Number(override.rmbRate) || 16.50;
+    const rmbRate = Number(override.rmbRate) || 20.00;
     const usdRate = 120.0;
     const qty = Number(override.qty) || 1;
     const weight = Number(override.weight) || 0.30;
