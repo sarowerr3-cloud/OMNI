@@ -1,12 +1,18 @@
 import './globals.css';
-import { Metadata } from 'next';
+import { Metadata, Viewport } from 'next';
 
 export const metadata: Metadata = {
   title: 'SourceIQ - Product Sourcing & Costing Engine',
   description: 'Multi-platform sourcing and landed-cost calculation powered by Gemini AI.',
   manifest: '/manifest.json',
+};
+
+export const viewport: Viewport = {
   themeColor: '#0284c7',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({
