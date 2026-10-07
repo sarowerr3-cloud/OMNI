@@ -35,3 +35,30 @@ async def test_search_endpoint_with_bd_market_benchmarks(async_client):
     assert float(margin["estimated_net_profit"]) > 0
     assert float(margin["gross_margin_percent"]) > 0
     assert float(margin["roi_percent"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_manual_calculator_endpoint(async_client):
+    response = await async_client.post(
+        "/calculate/manual",
+        json={
+            "unit_price_rmb": 28.00,
+            "rate_rmb_bdt": 16.50,
+            "quantity": 10,
+            "weight_value": 350,
+            "weight_unit": "gm",
+            "shipping_charge_per_unit_weight": 1000.00,
+            "shipping_charge_unit": "per_kg",
+            "domestic_china_shipping_bdt": 20.00,
+            "agent_fee_percent": 5.00,
+            "duty_vat_percent": 15.00,
+            "other_costs_bdt": 50.00,
+            "target_selling_price_bdt": 1500.00
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert float(data["total_landed_cost"]) > 0
+    assert float(data["per_unit_landed_cost"]) > 0
+    assert float(data["estimated_net_profit_per_unit"]) > 0
+    assert float(data["gross_margin_percent"]) > 0

@@ -53,7 +53,9 @@ interface LocalMarketBenchmark {
 
 export default function Home() {
   const [health, setHealth] = useState<any>(null);
-  const [searchMode, setSearchMode] = useState<'text' | 'image'>('text');
+  const [searchMode, setSearchMode] = useState<'text' | 'image' | 'manual'>('text');
+  
+  // Search Parameters
   const [query, setQuery] = useState('Smart Watch Ultra');
   const [globalQuantity, setGlobalQuantity] = useState<number>(10);
   const [globalShippingMethod, setGlobalShippingMethod] = useState<'air' | 'sea'>('air');
@@ -64,6 +66,20 @@ export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Manual Calculator State
+  const [manualRmbPrice, setManualRmbPrice] = useState<string>('28.00');
+  const [manualRateRmb, setManualRateRmb] = useState<string>('16.50');
+  const [manualQty, setManualQty] = useState<number>(10);
+  const [manualWeightVal, setManualWeightVal] = useState<string>('350');
+  const [manualWeightUnit, setManualWeightUnit] = useState<'kg' | 'gm'>('gm');
+  const [manualFreightRate, setManualFreightRate] = useState<string>('1000');
+  const [manualFreightUnit, setManualFreightUnit] = useState<'per_kg' | 'per_gm'>('per_kg');
+  const [manualDomesticShipping, setManualDomesticShipping] = useState<string>('20.00');
+  const [manualAgentFeePct, setManualAgentFeePct] = useState<string>('5.00');
+  const [manualDutyPct, setManualDutyPct] = useState<string>('15.00');
+  const [manualOtherCosts, setManualOtherCosts] = useState<string>('50.00');
+  const [manualTargetPrice, setManualTargetPrice] = useState<string>('1500.00');
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -103,6 +119,55 @@ export default function Home() {
     return Number(val).toLocaleString();
   };
 
+  // Compute live manual calculator breakdown
+  const computeManualMath = () => {
+    const rmbPrice = Number(manualRmbPrice) || 0;
+    const rate = Number(manualRateRmb) || 16.50;
+    const qty = Math.max(1, Number(manualQty) || 1);
+    const weightVal = Number(manualWeightVal) || 0;
+    const weightKg = manualWeightUnit === 'gm' ? weightVal / 1000.0 : weightVal;
+    const totalWeightKg = weightKg * qty;
+
+    const freightRate = Number(manualFreightRate) || 0;
+    let freightBdt = 0;
+    if (manualFreightUnit === 'per_gm') {
+      const totalWeightGm = manualWeightUnit === 'gm' ? weightVal * qty : weightVal * 1000.0 * qty;
+      freightBdt = totalWeightGm * freightRate;
+    } else {
+      freightBdt = totalWeightKg * freightRate;
+    }
+
+    const itemPriceBdt = rmbPrice * rate * qty;
+    const domesticShippingBdt = (Number(manualDomesticShipping) || 0) * qty;
+    const agentFeeBdt = itemPriceBdt * ((Number(manualAgentFeePct) || 0) / 100.0);
+    const dutyVatBdt = itemPriceBdt * ((Number(manualDutyPct) || 0) / 100.0);
+    const otherCostsBdt = Number(manualOtherCosts) || 0;
+
+    const totalLandedCost = itemPriceBdt + domesticShippingBdt + agentFeeBdt + freightBdt + dutyVatBdt + otherCostsBdt;
+    const perUnitLandedCost = totalLandedCost / qty;
+
+    const targetPrice = Number(manualTargetPrice) || perUnitLandedCost * 1.4;
+    const netProfit = targetPrice - perUnitLandedCost;
+    const grossMargin = targetPrice > 0 ? (netProfit / targetPrice) * 100 : 0;
+    const roi = perUnitLandedCost > 0 ? (netProfit / perUnitLandedCost) * 100 : 0;
+
+    return {
+      itemPriceBdt,
+      domesticShippingBdt,
+      agentFeeBdt,
+      freightBdt,
+      dutyVatBdt,
+      otherCostsBdt,
+      totalLandedCost,
+      perUnitLandedCost,
+      targetPrice,
+      netProfit,
+      grossMargin: Number(grossMargin.toFixed(2)),
+      roi: Number(roi.toFixed(2)),
+      totalWeightKg: Number(totalWeightKg.toFixed(3)),
+    };
+  };
+
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
@@ -136,7 +201,7 @@ export default function Home() {
         const data = await res.json();
         setSearchResults(data);
         initOverrides(data.sourcing_results);
-      } else {
+      } else if (searchMode === 'image') {
         const formData = new FormData();
         formData.append('file', selectedFile!);
         formData.append('quantity', String(globalQuantity || 10));
@@ -250,6 +315,7 @@ export default function Home() {
 
   const sourcingResults = searchResults?.sourcing_results || [];
   const bdBenchmarks = searchResults?.bd_market_benchmarks || [];
+  const manualMath = computeManualMath();
 
   return (
     <div style={{ minHeight: '100vh', background: '#09090b', color: '#f8fafc', padding: '1.5rem 1rem' }}>
@@ -336,252 +402,519 @@ export default function Home() {
           </div>
         )}
 
-        {/* Search Mode Selector & Panel */}
-        <section
-          style={{
-            background: '#18181b',
-            borderRadius: '16px',
-            padding: '1.5rem',
-            border: '1px solid #27272a',
-            marginBottom: '2rem',
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
-          }}
-        >
-          {/* Mode Switch Tabs */}
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
-            <button
-              type="button"
-              onClick={() => setSearchMode('text')}
-              style={{
-                padding: '8px 16px',
-                borderRadius: '8px',
-                background: searchMode === 'text' ? '#dc2626' : '#27272a',
-                color: '#ffffff',
-                fontWeight: 600,
-                fontSize: '0.9rem',
-              }}
-            >
-              🔍 Text Search
-            </button>
-            <button
-              type="button"
-              onClick={() => setSearchMode('image')}
-              style={{
-                padding: '8px 16px',
-                borderRadius: '8px',
-                background: searchMode === 'image' ? '#dc2626' : '#27272a',
-                color: '#ffffff',
-                fontWeight: 600,
-                fontSize: '0.9rem',
-              }}
-            >
-              📷 Image Search (Gemini Vision)
-            </button>
-          </div>
+        {/* Navigation Tabs */}
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setSearchMode('text')}
+            style={{
+              padding: '10px 18px',
+              borderRadius: '10px',
+              background: searchMode === 'text' ? '#dc2626' : '#18181b',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: '0.95rem',
+              border: '1px solid #27272a',
+            }}
+          >
+            🔍 Text Search
+          </button>
 
-          <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {searchMode === 'text' ? (
-              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search product (e.g., Smart Watch, Wireless Earbuds, Bag)..."
-                  style={{
-                    flex: 1,
-                    minWidth: '260px',
-                    background: '#09090b',
-                    border: '1px solid #3f3f46',
-                    borderRadius: '10px',
-                    padding: '12px 16px',
-                    fontSize: '1rem',
-                    outline: 'none',
-                  }}
-                />
-                <button
-                  type="submit"
-                  disabled={loading}
-                  style={{
-                    background: 'linear-gradient(135deg, #dc2626 0%, #990000 100%)',
-                    color: '#ffffff',
-                    fontWeight: 700,
-                    padding: '12px 28px',
-                    borderRadius: '10px',
-                    fontSize: '1rem',
-                    boxShadow: '0 0 12px rgba(220, 38, 38, 0.4)',
-                  }}
-                >
-                  {loading ? 'Searching OMNI...' : '🔍 Search Product'}
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{
-                    border: '2px dashed #dc2626',
-                    borderRadius: '12px',
-                    padding: '1.5rem',
-                    textAlign: 'center',
-                    background: '#09090b',
-                    cursor: 'pointer',
-                  }}
-                >
+          <button
+            type="button"
+            onClick={() => setSearchMode('image')}
+            style={{
+              padding: '10px 18px',
+              borderRadius: '10px',
+              background: searchMode === 'image' ? '#dc2626' : '#18181b',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: '0.95rem',
+              border: '1px solid #27272a',
+            }}
+          >
+            📷 Image Search (Gemini Vision)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSearchMode('manual')}
+            style={{
+              padding: '10px 18px',
+              borderRadius: '10px',
+              background: searchMode === 'manual' ? '#dc2626' : '#18181b',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: '0.95rem',
+              border: '1px solid #27272a',
+            }}
+          >
+            🧮 Manual Landed Cost Calculator
+          </button>
+        </div>
+
+        {/* Section A: Text & Image Search Panel */}
+        {searchMode !== 'manual' && (
+          <section
+            style={{
+              background: '#18181b',
+              borderRadius: '16px',
+              padding: '1.5rem',
+              border: '1px solid #27272a',
+              marginBottom: '2rem',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
+            }}
+          >
+            <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {searchMode === 'text' ? (
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                   <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    accept="image/*"
-                    style={{ display: 'none' }}
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search product (e.g., Smart Watch, Wireless Earbuds, Bag)..."
+                    style={{
+                      flex: 1,
+                      minWidth: '260px',
+                      background: '#09090b',
+                      border: '1px solid #3f3f46',
+                      borderRadius: '10px',
+                      padding: '12px 16px',
+                      fontSize: '1rem',
+                      outline: 'none',
+                    }}
                   />
-                  {previewUrl ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                      <img
-                        src={previewUrl}
-                        alt="Product Upload Preview"
-                        style={{ maxHeight: '140px', borderRadius: '8px', objectFit: 'contain' }}
-                      />
-                      <span style={{ fontSize: '0.85rem', color: '#22c55e', fontWeight: 600 }}>
-                        ✓ {selectedFile?.name} Selected
-                      </span>
-                    </div>
-                  ) : (
-                    <div>
-                      <p style={{ fontSize: '1.1rem', fontWeight: 600, color: '#f8fafc', marginBottom: '4px' }}>
-                        📷 Click or Drag Product Photo Here
-                      </p>
-                      <p style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>
-                        Supports camera photos, JPG, PNG, WEBP, HEIC
-                      </p>
-                    </div>
-                  )}
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    style={{
+                      background: 'linear-gradient(135deg, #dc2626 0%, #990000 100%)',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      padding: '12px 28px',
+                      borderRadius: '10px',
+                      fontSize: '1rem',
+                      boxShadow: '0 0 12px rgba(220, 38, 38, 0.4)',
+                    }}
+                  >
+                    {loading ? 'Searching OMNI...' : '🔍 Search Product'}
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      border: '2px dashed #dc2626',
+                      borderRadius: '12px',
+                      padding: '1.5rem',
+                      textAlign: 'center',
+                      background: '#09090b',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                    />
+                    {previewUrl ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                        <img
+                          src={previewUrl}
+                          alt="Product Upload Preview"
+                          style={{ maxHeight: '140px', borderRadius: '8px', objectFit: 'contain' }}
+                        />
+                        <span style={{ fontSize: '0.85rem', color: '#22c55e', fontWeight: 600 }}>
+                          ✓ {selectedFile?.name} Selected
+                        </span>
+                      </div>
+                    ) : (
+                      <div>
+                        <p style={{ fontSize: '1.1rem', fontWeight: 600, color: '#f8fafc', marginBottom: '4px' }}>
+                          📷 Click or Drag Product Photo Here
+                        </p>
+                        <p style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>
+                          Supports camera photos, JPG, PNG, WEBP, HEIC
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading || !selectedFile}
+                    style={{
+                      background: selectedFile
+                        ? 'linear-gradient(135deg, #dc2626 0%, #990000 100%)'
+                        : '#3f3f46',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      padding: '12px 28px',
+                      borderRadius: '10px',
+                      fontSize: '1rem',
+                      boxShadow: selectedFile ? '0 0 12px rgba(220, 38, 38, 0.4)' : 'none',
+                    }}
+                  >
+                    {loading ? 'Analyzing with Gemini Vision...' : '📷 Search by Image'}
+                  </button>
+                </div>
+              )}
+
+              {/* Global Config Controls Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', paddingTop: '0.5rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#dc2626', fontWeight: 700, marginBottom: '4px' }}>
+                    💱 Exchange Rate: 1 RMB = (Tk / BDT)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    value={globalRateRmbBdt}
+                    onChange={(e) => setGlobalRateRmbBdt(e.target.value)}
+                    placeholder="16.50"
+                    style={{
+                      width: '100%',
+                      background: '#09090b',
+                      border: '1px solid #dc2626',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      fontWeight: 700,
+                      color: '#ffffff',
+                    }}
+                  />
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={loading || !selectedFile}
-                  style={{
-                    background: selectedFile
-                      ? 'linear-gradient(135deg, #dc2626 0%, #990000 100%)'
-                      : '#3f3f46',
-                    color: '#ffffff',
-                    fontWeight: 700,
-                    padding: '12px 28px',
-                    borderRadius: '10px',
-                    fontSize: '1rem',
-                    boxShadow: selectedFile ? '0 0 12px rgba(220, 38, 38, 0.4)' : 'none',
-                  }}
-                >
-                  {loading ? 'Analyzing with Gemini Vision...' : '📷 Search by Image'}
-                </button>
-              </div>
-            )}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#a1a1aa', marginBottom: '4px' }}>
+                    Quantity (Units)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={globalQuantity}
+                    onChange={(e) => setGlobalQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                    style={{
+                      width: '100%',
+                      background: '#09090b',
+                      border: '1px solid #3f3f46',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                    }}
+                  />
+                </div>
 
-            {/* Global Config Controls Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', paddingTop: '0.5rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#a1a1aa', marginBottom: '4px' }}>
+                    Shipping Method
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => setGlobalShippingMethod('air')}
+                      style={{
+                        flex: 1,
+                        padding: '8px',
+                        borderRadius: '8px',
+                        background: globalShippingMethod === 'air' ? '#dc2626' : '#27272a',
+                        color: '#ffffff',
+                        fontWeight: 600,
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      ✈️ Air
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGlobalShippingMethod('sea')}
+                      style={{
+                        flex: 1,
+                        padding: '8px',
+                        borderRadius: '8px',
+                        background: globalShippingMethod === 'sea' ? '#dc2626' : '#27272a',
+                        color: '#ffffff',
+                        fontWeight: 600,
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      🚢 Sea
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#a1a1aa', marginBottom: '4px' }}>
+                    Weight per unit (kg)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    value={globalWeightKg}
+                    onChange={(e) => setGlobalWeightKg(e.target.value)}
+                    style={{
+                      width: '100%',
+                      background: '#09090b',
+                      border: '1px solid #3f3f46',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                    }}
+                  />
+                </div>
+              </div>
+            </form>
+          </section>
+        )}
+
+        {/* Section B: Standalone Manual Landed Cost Calculator */}
+        {searchMode === 'manual' && (
+          <section
+            style={{
+              background: '#18181b',
+              borderRadius: '16px',
+              padding: '1.5rem',
+              border: '1px solid #dc2626',
+              marginBottom: '2rem',
+              boxShadow: '0 0 25px rgba(220, 38, 38, 0.2)',
+            }}
+          >
+            <h2 style={{ fontSize: '1.25rem', color: '#ffffff', marginBottom: '1rem', fontWeight: 800 }}>
+              🧮 Standalone Manual Landed Cost & Profit Calculator
+            </h2>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', color: '#dc2626', fontWeight: 700, marginBottom: '4px' }}>
-                  💱 Global RMB Rate (Tk / BDT)
+                <label style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
+                  1. Product Price in RMB (¥)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={manualRmbPrice}
+                  onChange={(e) => setManualRmbPrice(e.target.value)}
+                  style={{ width: '100%', background: '#09090b', border: '1px solid #dc2626', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontWeight: 700 }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
+                  2. Exchange Rate (1 RMB = Tk/BDT)
                 </label>
                 <input
                   type="number"
                   step="0.05"
-                  value={globalRateRmbBdt}
-                  onChange={(e) => setGlobalRateRmbBdt(e.target.value)}
-                  placeholder="16.50"
-                  style={{
-                    width: '100%',
-                    background: '#09090b',
-                    border: '1px solid #dc2626',
-                    borderRadius: '8px',
-                    padding: '8px 12px',
-                    fontWeight: 700,
-                    color: '#ffffff',
-                  }}
+                  value={manualRateRmb}
+                  onChange={(e) => setManualRateRmb(e.target.value)}
+                  style={{ width: '100%', background: '#09090b', border: '1px solid #dc2626', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontWeight: 700 }}
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', color: '#a1a1aa', marginBottom: '4px' }}>
-                  Global Quantity (Units)
+                <label style={{ fontSize: '0.8rem', color: '#a1a1aa', display: 'block', marginBottom: '4px' }}>
+                  3. Product Quantity (Units)
                 </label>
                 <input
                   type="number"
                   min="1"
-                  value={globalQuantity}
-                  onChange={(e) => setGlobalQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                  style={{
-                    width: '100%',
-                    background: '#09090b',
-                    border: '1px solid #3f3f46',
-                    borderRadius: '8px',
-                    padding: '8px 12px',
-                  }}
+                  value={manualQty}
+                  onChange={(e) => setManualQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  style={{ width: '100%', background: '#09090b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '8px 12px', color: '#fff' }}
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', color: '#a1a1aa', marginBottom: '4px' }}>
-                  Global Shipping Method
+                <label style={{ fontSize: '0.8rem', color: '#a1a1aa', display: 'block', marginBottom: '4px' }}>
+                  4. Weight per Unit
                 </label>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button
-                    type="button"
-                    onClick={() => setGlobalShippingMethod('air')}
-                    style={{
-                      flex: 1,
-                      padding: '8px',
-                      borderRadius: '8px',
-                      background: globalShippingMethod === 'air' ? '#dc2626' : '#27272a',
-                      color: '#ffffff',
-                      fontWeight: 600,
-                      fontSize: '0.85rem',
-                    }}
+                  <input
+                    type="number"
+                    step="0.05"
+                    value={manualWeightVal}
+                    onChange={(e) => setManualWeightVal(e.target.value)}
+                    style={{ flex: 1, background: '#09090b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '8px 12px', color: '#fff' }}
+                  />
+                  <select
+                    value={manualWeightUnit}
+                    onChange={(e: any) => setManualWeightUnit(e.target.value)}
+                    style={{ background: '#09090b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '8px', color: '#fff' }}
                   >
-                    ✈️ Air
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setGlobalShippingMethod('sea')}
-                    style={{
-                      flex: 1,
-                      padding: '8px',
-                      borderRadius: '8px',
-                      background: globalShippingMethod === 'sea' ? '#dc2626' : '#27272a',
-                      color: '#ffffff',
-                      fontWeight: 600,
-                      fontSize: '0.85rem',
-                    }}
-                  >
-                    🚢 Sea
-                  </button>
+                    <option value="gm">gm</option>
+                    <option value="kg">kg</option>
+                  </select>
                 </div>
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', color: '#a1a1aa', marginBottom: '4px' }}>
-                  Global Weight per unit (kg)
+                <label style={{ fontSize: '0.8rem', color: '#a1a1aa', display: 'block', marginBottom: '4px' }}>
+                  5. Freight Charge Rate (Tk/BDT)
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input
+                    type="number"
+                    value={manualFreightRate}
+                    onChange={(e) => setManualFreightRate(e.target.value)}
+                    style={{ flex: 1, background: '#09090b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '8px 12px', color: '#fff' }}
+                  />
+                  <select
+                    value={manualFreightUnit}
+                    onChange={(e: any) => setManualFreightUnit(e.target.value)}
+                    style={{ background: '#09090b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '8px', color: '#fff' }}
+                  >
+                    <option value="per_kg">/ kg</option>
+                    <option value="per_gm">/ gm</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.8rem', color: '#a1a1aa', display: 'block', marginBottom: '4px' }}>
+                  6. Domestic China Freight / Unit (Tk)
                 </label>
                 <input
                   type="number"
-                  step="0.05"
-                  value={globalWeightKg}
-                  onChange={(e) => setGlobalWeightKg(e.target.value)}
-                  style={{
-                    width: '100%',
-                    background: '#09090b',
-                    border: '1px solid #3f3f46',
-                    borderRadius: '8px',
-                    padding: '8px 12px',
-                  }}
+                  value={manualDomesticShipping}
+                  onChange={(e) => setManualDomesticShipping(e.target.value)}
+                  style={{ width: '100%', background: '#09090b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '8px 12px', color: '#fff' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.8rem', color: '#a1a1aa', display: 'block', marginBottom: '4px' }}>
+                  7. Sourcing Agent Fee %
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={manualAgentFeePct}
+                  onChange={(e) => setManualAgentFeePct(e.target.value)}
+                  style={{ width: '100%', background: '#09090b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '8px 12px', color: '#fff' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.8rem', color: '#a1a1aa', display: 'block', marginBottom: '4px' }}>
+                  8. Customs Duty & Tax %
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={manualDutyPct}
+                  onChange={(e) => setManualDutyPct(e.target.value)}
+                  style={{ width: '100%', background: '#09090b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '8px 12px', color: '#fff' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.8rem', color: '#a1a1aa', display: 'block', marginBottom: '4px' }}>
+                  9. Other Overhead Costs Total (Tk)
+                </label>
+                <input
+                  type="number"
+                  value={manualOtherCosts}
+                  onChange={(e) => setManualOtherCosts(e.target.value)}
+                  style={{ width: '100%', background: '#09090b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '8px 12px', color: '#fff' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.8rem', color: '#22c55e', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
+                  10. Target Selling Price / Unit (Tk)
+                </label>
+                <input
+                  type="number"
+                  value={manualTargetPrice}
+                  onChange={(e) => setManualTargetPrice(e.target.value)}
+                  style={{ width: '100%', background: '#09090b', border: '1px solid #22c55e', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontWeight: 700 }}
                 />
               </div>
             </div>
-          </form>
-        </section>
 
-        {/* Results Section */}
-        {searchResults && (
+            {/* Instant Calculated Output Breakdown Box */}
+            <div style={{ background: '#09090b', padding: '1.25rem', borderRadius: '12px', border: '1px solid #27272a' }}>
+              <h3 style={{ fontSize: '1.1rem', color: '#ffffff', marginBottom: '1rem', fontWeight: 800 }}>
+                📊 Itemized Landed Cost & Profit Breakdown (Tk / BDT)
+              </h3>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.25rem' }}>
+                {/* Cost Table */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                    <span style={{ color: '#a1a1aa' }}>Total Item Price (RMB ¥{manualRmbPrice}):</span>
+                    <span style={{ fontWeight: 600 }}>৳{formatMoney(manualMath.itemPriceBdt)} Tk / BDT</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                    <span style={{ color: '#a1a1aa' }}>Domestic China Freight:</span>
+                    <span>৳{formatMoney(manualMath.domesticShippingBdt)} Tk / BDT</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                    <span style={{ color: '#a1a1aa' }}>Agent Fee ({manualAgentFeePct}%):</span>
+                    <span>৳{formatMoney(Math.round(manualMath.agentFeeBdt))} Tk / BDT</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                    <span style={{ color: '#a1a1aa' }}>International Freight ({manualMath.totalWeightKg} kg):</span>
+                    <span>৳{formatMoney(manualMath.freightBdt)} Tk / BDT</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                    <span style={{ color: '#a1a1aa' }}>Customs Duty & Tax ({manualDutyPct}%):</span>
+                    <span>৳{formatMoney(Math.round(manualMath.dutyVatBdt))} Tk / BDT</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                    <span style={{ color: '#a1a1aa' }}>Other Overhead Costs:</span>
+                    <span>৳{formatMoney(manualMath.otherCostsBdt)} Tk / BDT</span>
+                  </div>
+
+                  <hr style={{ borderColor: '#27272a', margin: '8px 0' }} />
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '1.1rem' }}>
+                    <span style={{ color: '#ffffff' }}>Total Landed Cost ({manualQty} pcs):</span>
+                    <span style={{ color: '#38bdf8' }}>৳{formatMoney(manualMath.totalLandedCost)} Tk / BDT</span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '1.1rem', color: '#dc2626' }}>
+                    <span>Landed Cost / Unit:</span>
+                    <span>৳{formatMoney(manualMath.perUnitLandedCost)} Tk / BDT</span>
+                  </div>
+                </div>
+
+                {/* Profit Metrics */}
+                <div style={{ background: '#18181b', padding: '1rem', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '0.75rem', justifyContent: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Target Selling Price / Unit:</span>
+                    <span style={{ color: '#ffffff', fontWeight: 800, fontSize: '1.1rem' }}>
+                      ৳{formatMoney(manualMath.targetPrice)} Tk / BDT
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Est. Net Profit / Unit:</span>
+                    <span style={{ color: '#22c55e', fontWeight: 800, fontSize: '1.2rem' }}>
+                      ৳{formatMoney(manualMath.netProfit)} Tk / BDT
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Gross Margin:</span>
+                    <span style={{ color: '#38bdf8', fontWeight: 800, fontSize: '1.1rem' }}>
+                      {manualMath.grossMargin}%
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>ROI %:</span>
+                    <span style={{ color: '#f59e0b', fontWeight: 800, fontSize: '1.1rem' }}>
+                      {manualMath.roi}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Results Section for Text/Image Search */}
+        {searchMode !== 'manual' && searchResults && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
             {/* Gemini Vision Analysis Banner (if image search) */}
             {searchResults?.image_analysis && (
@@ -950,4 +1283,8 @@ export default function Home() {
       </main>
     </div>
   );
+}
+
+function mathRound(val: number): number {
+  return Math.round((val + Number.EPSILON) * 100) / 100;
 }

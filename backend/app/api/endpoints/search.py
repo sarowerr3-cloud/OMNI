@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Query, HTTPException, File, UploadFile, Form
 from pydantic import BaseModel
@@ -37,6 +37,42 @@ class SearchResponse(BaseModel):
     image_analysis: Optional[Dict[str, Any]] = None
     sourcing_results: List[SourcedProductResult]
     bd_market_benchmarks: List[LocalMarketBenchmark]
+
+
+class ManualCalculatorRequest(BaseModel):
+    unit_price_rmb: Decimal
+    rate_rmb_bdt: Decimal = Decimal("16.50")
+    quantity: int = 10
+    weight_value: float = 0.35
+    weight_unit: str = "kg"  # "kg" or "gm"
+    shipping_charge_per_unit_weight: Decimal = Decimal("1000.00")
+    shipping_charge_unit: str = "per_kg"  # "per_kg" or "per_gm"
+    domestic_china_shipping_bdt: Decimal = Decimal("20.00")
+    agent_fee_percent: Decimal = Decimal("5.00")
+    duty_vat_percent: Decimal = Decimal("15.00")
+    other_costs_bdt: Decimal = Decimal("0.00")
+    target_selling_price_bdt: Optional[Decimal] = None
+
+
+class ManualCalculatorResponse(BaseModel):
+    unit_price_rmb: Decimal
+    rate_rmb_bdt: Decimal
+    quantity: int
+    weight_value: float
+    weight_unit: str
+    total_weight_kg: float
+    item_price_bdt: Decimal
+    domestic_china_shipping_bdt: Decimal
+    agent_fee_bdt: Decimal
+    international_freight_bdt: Decimal
+    duty_vat_bdt: Decimal
+    other_costs_bdt: Decimal
+    total_landed_cost: Decimal
+    per_unit_landed_cost: Decimal
+    target_selling_price_bdt: Decimal
+    estimated_net_profit_per_unit: Decimal
+    gross_margin_percent: Decimal
+    roi_percent: Decimal
 
 
 @router.post("/search", response_model=SearchResponse, tags=["Sourcing & Market Benchmark"])
@@ -220,4 +256,76 @@ async def search_products_by_image(
         image_analysis=analysis,
         sourcing_results=sourced_results,
         bd_market_benchmarks=bd_benchmarks
+    )
+
+
+@router.post("/calculate/manual", response_model=ManualCalculatorResponse, tags=["Pricing Calculator"])
+async def calculate_manual_landed_cost(req: ManualCalculatorRequest):
+    """
+    Standalone Manual Landed Cost & Pricing Calculator.
+    Allows user to input unit price in RMB, exchange rate, quantity, weight (kg or gm),
+    shipping charge per kg/gm, domestic freight, duty %, and other overhead costs,
+    and returns a line-by-line itemized BDT cost breakdown and profit analysis.
+    """
+    qty = max(1, req.quantity)
+    rate = req.rate_rmb_bdt if req.rate_rmb_bdt > 0 else Decimal("16.50")
+
+    # Calculate item price in BDT
+    item_price_bdt = (req.unit_price_rmb * rate * Decimal(qty)).quantize(Decimal("0.01"))
+
+    # Convert weight to kg
+    weight_kg = req.weight_value / 1000.0 if req.weight_unit == "gm" else req.weight_value
+    total_weight_kg = weight_kg * qty
+
+    # Calculate international freight charge
+    if req.shipping_charge_unit == "per_gm":
+        weight_gm = req.weight_value if req.weight_unit == "gm" else req.weight_value * 1000.0
+        freight_bdt = (Decimal(str(weight_gm * qty)) * req.shipping_charge_per_unit_weight).quantize(Decimal("0.01"))
+    else:
+        freight_bdt = (Decimal(str(total_weight_kg)) * req.shipping_charge_per_unit_weight).quantize(Decimal("0.01"))
+
+    domestic_shipping = (req.domestic_china_shipping_bdt * Decimal(qty)).quantize(Decimal("0.01"))
+    agent_fee = (item_price_bdt * (req.agent_fee_percent / Decimal("100"))).quantize(Decimal("0.01"))
+    duty_vat = (item_price_bdt * (req.duty_vat_percent / Decimal("100"))).quantize(Decimal("0.01"))
+    other_costs = req.other_costs_bdt.quantize(Decimal("0.01"))
+
+    total_landed_cost = (
+        item_price_bdt + domestic_shipping + agent_fee + freight_bdt + duty_vat + other_costs
+    ).quantize(Decimal("0.01"))
+
+    per_unit_landed_cost = (total_landed_cost / Decimal(qty)).quantize(Decimal("0.01"))
+
+    # Target Selling Price & Profit Calculation
+    target_selling_price = req.target_selling_price_bdt if req.target_selling_price_bdt is not None and req.target_selling_price_bdt > 0 else (per_unit_landed_cost * Decimal("1.40")).quantize(Decimal("0.01"))
+    net_profit = (target_selling_price - per_unit_landed_cost).quantize(Decimal("0.01"))
+
+    if target_selling_price > 0:
+        gross_margin = ((net_profit / target_selling_price) * Decimal("100")).quantize(Decimal("0.01"))
+    else:
+        gross_margin = Decimal("0.00")
+
+    if per_unit_landed_cost > 0:
+        roi = ((net_profit / per_unit_landed_cost) * Decimal("100")).quantize(Decimal("0.01"))
+    else:
+        roi = Decimal("0.00")
+
+    return ManualCalculatorResponse(
+        unit_price_rmb=req.unit_price_rmb,
+        rate_rmb_bdt=rate,
+        quantity=qty,
+        weight_value=req.weight_value,
+        weight_unit=req.weight_unit,
+        total_weight_kg=total_weight_kg,
+        item_price_bdt=item_price_bdt,
+        domestic_china_shipping_bdt=domestic_shipping,
+        agent_fee_bdt=agent_fee,
+        international_freight_bdt=freight_bdt,
+        duty_vat_bdt=duty_vat,
+        other_costs_bdt=other_costs,
+        total_landed_cost=total_landed_cost,
+        per_unit_landed_cost=per_unit_landed_cost,
+        target_selling_price_bdt=target_selling_price,
+        estimated_net_profit_per_unit=net_profit,
+        gross_margin_percent=gross_margin,
+        roi_percent=roi
     )
