@@ -347,24 +347,29 @@ export default function Home() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', paddingTop: '0.5rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', color: '#dc2626', fontWeight: 700, marginBottom: '4px' }}>
-                  💱 RMB → BDT Rate (৳)
+                  💱 Exchange Rate: 1 RMB = (Tk / BDT)
                 </label>
-                <input
-                  type="number"
-                  step="0.05"
-                  value={rateRmbBdt}
-                  onChange={(e) => setRateRmbBdt(e.target.value)}
-                  placeholder="16.50"
-                  style={{
-                    width: '100%',
-                    background: '#09090b',
-                    border: '1px solid #dc2626',
-                    borderRadius: '8px',
-                    padding: '8px 12px',
-                    fontWeight: 700,
-                    color: '#ffffff',
-                  }}
-                />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    step="0.05"
+                    value={rateRmbBdt}
+                    onChange={(e) => setRateRmbBdt(e.target.value)}
+                    placeholder="16.50"
+                    style={{
+                      width: '100%',
+                      background: '#09090b',
+                      border: '1px solid #dc2626',
+                      borderRadius: '8px',
+                      padding: '8px 45px 8px 12px',
+                      fontWeight: 700,
+                      color: '#ffffff',
+                    }}
+                  />
+                  <span style={{ position: 'absolute', right: '12px', fontSize: '0.8rem', color: '#dc2626', fontWeight: 700 }}>
+                    Tk / BDT
+                  </span>
+                </div>
               </div>
 
               <div>
@@ -480,7 +485,7 @@ export default function Home() {
             {/* 1. Sourcing Listings & Landed Cost Breakdown */}
             <div>
               <h2 style={{ fontSize: '1.25rem', color: '#ffffff', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ color: '#dc2626' }}>🇨🇳</span> Sourcing Suppliers & Landed Cost (Rate: ৳{searchResults.rate_rmb_bdt}/RMB)
+                <span style={{ color: '#dc2626' }}>🇨🇳</span> Sourcing Suppliers & Landed Cost (Rate: 1 RMB = {searchResults.rate_rmb_bdt} Tk / BDT)
               </h2>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
@@ -533,26 +538,35 @@ export default function Home() {
                       <div style={{ background: '#09090b', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                           <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Supplier Price:</span>
-                          <span style={{ fontWeight: 600 }}>
-                            {res.product.currency === 'RMB' ? '¥' : '$'}{res.product.price}
+                          <span style={{ fontWeight: 700, color: '#f8fafc' }}>
+                            {res.product.currency === 'RMB' ? `¥${res.product.price} RMB` : `$${res.product.price} USD`}
                           </span>
                         </div>
+
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                          <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Total Item Price (BDT @ ৳{searchResults.rate_rmb_bdt}):</span>
-                          <span>৳{res.cost_breakdown.item_price_bdt.toLocaleString()}</span>
+                          <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Total Item Price:</span>
+                          <span style={{ fontWeight: 600, color: '#f8fafc' }}>
+                            ৳{res.cost_breakdown.item_price_bdt.toLocaleString()} Tk / BDT
+                          </span>
                         </div>
+
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                           <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Freight ({shippingMethod.toUpperCase()}):</span>
-                          <span>৳{res.cost_breakdown.international_freight_bdt.toLocaleString()}</span>
+                          <span>৳{res.cost_breakdown.international_freight_bdt.toLocaleString()} Tk / BDT</span>
                         </div>
+
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                           <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Duty & Tax (15%):</span>
-                          <span>৳{res.cost_breakdown.duty_vat_bdt.toLocaleString()}</span>
+                          <span>৳{res.cost_breakdown.duty_vat_bdt.toLocaleString()} Tk / BDT</span>
                         </div>
+
                         <hr style={{ borderColor: '#27272a', margin: '6px 0' }} />
+
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '1.05rem' }}>
                           <span style={{ color: '#ffffff' }}>Landed Cost / Unit:</span>
-                          <span style={{ color: '#38bdf8' }}>৳{res.cost_breakdown.per_unit_landed_cost.toLocaleString()}</span>
+                          <span style={{ color: '#38bdf8' }}>
+                            ৳{res.cost_breakdown.per_unit_landed_cost.toLocaleString()} Tk / BDT
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -611,7 +625,7 @@ export default function Home() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Local Selling Price:</span>
                       <span style={{ color: '#22c55e', fontWeight: 800, fontSize: '1.1rem' }}>
-                        ৳{bm.price_bdt.toLocaleString()}
+                        ৳{bm.price_bdt.toLocaleString()} Tk / BDT
                       </span>
                     </div>
                     {bm.notes && <p style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '6px' }}>{bm.notes}</p>}
@@ -638,14 +652,14 @@ export default function Home() {
                     <div style={{ background: '#09090b', padding: '1rem', borderRadius: '10px' }}>
                       <p style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>Average Local Retail Price</p>
                       <p style={{ fontSize: '1.3rem', fontWeight: 800, color: '#ffffff', marginTop: '4px' }}>
-                        ৳{searchResults.sourcing_results[0].market_analysis.local_bd_market_avg_price.toLocaleString()}
+                        ৳{searchResults.sourcing_results[0].market_analysis.local_bd_market_avg_price.toLocaleString()} <span style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>Tk / BDT</span>
                       </p>
                     </div>
 
                     <div style={{ background: '#09090b', padding: '1rem', borderRadius: '10px' }}>
                       <p style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>Est. Net Profit / Unit</p>
                       <p style={{ fontSize: '1.3rem', fontWeight: 800, color: '#22c55e', marginTop: '4px' }}>
-                        ৳{searchResults.sourcing_results[0].market_analysis.estimated_net_profit.toLocaleString()}
+                        ৳{searchResults.sourcing_results[0].market_analysis.estimated_net_profit.toLocaleString()} <span style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>Tk / BDT</span>
                       </p>
                     </div>
 
