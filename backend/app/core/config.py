@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
+    # Claude API Settings (Anthropic)
+    CLAUDE_API_KEY: Optional[str] = None
+    CLAUDE_MODEL: str = "claude-3-5-sonnet-20241022"
+
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./test.db"
 

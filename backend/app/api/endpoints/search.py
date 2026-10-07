@@ -10,6 +10,8 @@ from backend.app.connectors.bd_market import bd_market_connector
 from backend.app.services.cost_engine import cost_engine
 from backend.app.services.pricing_engine import pricing_engine
 from backend.app.services.gemini_service import gemini_service
+from backend.app.services.claude_service import claude_service
+from backend.app.services.ai_orchestrator import ai_orchestrator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -27,6 +29,7 @@ class SourcedProductResult(BaseModel):
     product: ProductBase
     cost_breakdown: CostBreakdown
     market_analysis: MarketMarginAnalysis
+    claude_insight: Optional[Dict[str, Any]] = None
 
 
 class SearchResponse(BaseModel):
@@ -35,6 +38,7 @@ class SearchResponse(BaseModel):
     shipping_method: str
     rate_rmb_bdt: Decimal
     image_analysis: Optional[Dict[str, Any]] = None
+    ai_status: Optional[Dict[str, Any]] = None
     sourcing_results: List[SourcedProductResult]
     bd_market_benchmarks: List[LocalMarketBenchmark]
 
@@ -123,11 +127,20 @@ async def search_products(req: SearchRequest):
             local_benchmarks=bd_benchmarks
         )
 
+        claude_insight = await claude_service.analyze_sourcing_market(
+            product_title=product.title_en or product.title_original,
+            landed_cost_bdt=float(breakdown.per_unit_landed_cost),
+            bd_avg_retail_price_bdt=float(analysis.local_bd_market_avg_price),
+            estimated_margin_percent=float(analysis.gross_margin_percent),
+            moq=product.moq
+        )
+
         sourced_results.append(
             SourcedProductResult(
                 product=product,
                 cost_breakdown=breakdown,
-                market_analysis=analysis
+                market_analysis=analysis,
+                claude_insight=claude_insight
             )
         )
 
@@ -139,6 +152,7 @@ async def search_products(req: SearchRequest):
         quantity=req.quantity,
         shipping_method=req.shipping_method,
         rate_rmb_bdt=rmb_rate,
+        ai_status=ai_orchestrator.get_status(),
         sourcing_results=sourced_results,
         bd_market_benchmarks=bd_benchmarks
     )
@@ -238,11 +252,20 @@ async def search_products_by_image(
             local_benchmarks=bd_benchmarks
         )
 
+        claude_insight = await claude_service.analyze_sourcing_market(
+            product_title=product.title_en or product.title_original,
+            landed_cost_bdt=float(breakdown.per_unit_landed_cost),
+            bd_avg_retail_price_bdt=float(margin_analysis.local_bd_market_avg_price),
+            estimated_margin_percent=float(margin_analysis.gross_margin_percent),
+            moq=product.moq
+        )
+
         sourced_results.append(
             SourcedProductResult(
                 product=product,
                 cost_breakdown=breakdown,
-                market_analysis=margin_analysis
+                market_analysis=margin_analysis,
+                claude_insight=claude_insight
             )
         )
 
@@ -254,6 +277,7 @@ async def search_products_by_image(
         shipping_method=shipping_method,
         rate_rmb_bdt=parsed_rate,
         image_analysis=analysis,
+        ai_status=ai_orchestrator.get_status(),
         sourcing_results=sourced_results,
         bd_market_benchmarks=bd_benchmarks
     )
@@ -329,3 +353,30 @@ async def calculate_manual_landed_cost(req: ManualCalculatorRequest):
         gross_margin_percent=gross_margin,
         roi_percent=roi
     )
+
+
+class AIInsightRequest(BaseModel):
+    product_title: str
+    landed_cost_bdt: float
+    bd_avg_price_bdt: float
+    gross_margin_pct: float
+
+
+@router.get("/ai/status", tags=["AI Co-Pilot (Gemini + Claude)"])
+async def get_ai_status():
+    """Returns active operational status for both Gemini API and Claude API engines."""
+    return ai_orchestrator.get_status()
+
+
+@router.post("/ai/insight", tags=["AI Co-Pilot (Gemini + Claude)"])
+async def generate_dual_ai_insight(req: AIInsightRequest):
+    """
+    Generates combined Dual AI Strategic Insight (Gemini Vision + Claude Commercial Strategy).
+    """
+    return await ai_orchestrator.generate_dual_ai_insight(
+        product_title=req.product_title,
+        landed_cost_bdt=req.landed_cost_bdt,
+        bd_avg_price_bdt=req.bd_avg_price_bdt,
+        gross_margin_pct=req.gross_margin_pct
+    )
+

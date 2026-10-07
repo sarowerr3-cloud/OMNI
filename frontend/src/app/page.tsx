@@ -40,6 +40,15 @@ interface SourcedProductResult {
     roi_percent: number;
     break_even_quantity: number;
   };
+  claude_insight?: {
+    claude_model?: string;
+    market_positioning?: string;
+    commercial_viability?: string;
+    risk_factors?: string[];
+    recommended_pricing_strategy?: string;
+    recommended_channels?: string[];
+    sourcing_tip?: string;
+  };
 }
 
 interface LocalMarketBenchmark {
@@ -94,6 +103,8 @@ export default function Home() {
   // Per-card user overrides state map: idx -> { rmbRate, qty, weight, shipping }
   const [cardOverrides, setCardOverrides] = useState<Record<number, { rmbRate: string; qty: number; weight: string; shipping: 'air' | 'sea'; selectedImgIdx: number; showVideo: boolean; showSpecs: boolean }>>({});
 
+  const [aiStatus, setAiStatus] = useState<any>(null);
+
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
   useEffect(() => {
@@ -103,6 +114,13 @@ export default function Home() {
       .catch((err) => {
         console.error('API health fetch failed:', err);
         setHealth({ status: 'offline' });
+      });
+
+    fetch(`${apiUrl}/ai/status`)
+      .then((res) => res.json())
+      .then((data) => setAiStatus(data))
+      .catch((err) => {
+        console.error('AI status fetch failed:', err);
       });
   }, [apiUrl]);
 
@@ -379,7 +397,9 @@ export default function Home() {
           />
           <span>API: {health?.status === 'ok' ? 'Connected' : 'Offline'}</span>
           <span style={{ color: '#52525b' }}>|</span>
-          <span style={{ color: '#dc2626', fontWeight: 'bold' }}>Gemini AI Vision</span>
+          <span style={{ color: '#dc2626', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span>🤖</span> Dual AI Co-Pilot (Gemini + Claude)
+          </span>
         </div>
       </header>
 
@@ -1210,6 +1230,52 @@ export default function Home() {
                                   </div>
                                 )}
                               </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Dual AI Co-Pilot Strategic Commercial Insight Box (Gemini + Claude) */}
+                        {res.claude_insight && (
+                          <div style={{ background: '#09090b', padding: '0.85rem', borderRadius: '10px', border: '1px solid #990000', marginBottom: '1rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                              <span style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 800 }}>
+                                🤖 Dual AI Co-Pilot (Gemini + Claude) Strategy
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '0.75rem',
+                                  padding: '2px 8px',
+                                  borderRadius: '9999px',
+                                  background: res.claude_insight.commercial_viability === 'HIGH' ? '#14532d' : '#713f12',
+                                  color: res.claude_insight.commercial_viability === 'HIGH' ? '#4ade80' : '#fde047',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                Viability: {res.claude_insight.commercial_viability || 'HIGH'}
+                              </span>
+                            </div>
+
+                            {res.claude_insight.recommended_pricing_strategy && (
+                              <p style={{ fontSize: '0.8rem', color: '#f8fafc', marginBottom: '6px' }}>
+                                💡 <strong>Pricing Strategy:</strong> {res.claude_insight.recommended_pricing_strategy}
+                              </p>
+                            )}
+
+                            {res.claude_insight.risk_factors && res.claude_insight.risk_factors.length > 0 && (
+                              <div style={{ fontSize: '0.75rem', color: '#fca5a5', marginBottom: '6px' }}>
+                                <strong>⚠️ Key Risk Factors:</strong>
+                                <ul style={{ margin: '2px 0 0 16px', padding: 0 }}>
+                                  {res.claude_insight.risk_factors.map((risk, rIdx) => (
+                                    <li key={rIdx}>{risk}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {res.claude_insight.sourcing_tip && (
+                              <p style={{ fontSize: '0.75rem', color: '#38bdf8', margin: 0 }}>
+                                🎯 <strong>Supplier Negotiation Tip:</strong> {res.claude_insight.sourcing_tip}
+                              </p>
                             )}
                           </div>
                         )}
