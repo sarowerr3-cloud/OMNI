@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel, HttpUrl
 
 
@@ -13,9 +13,12 @@ class ProductBase(BaseModel):
     moq: int = 1
     url: Optional[str] = None
     images: List[str] = []
+    videos: List[str] = []
+    specs: Dict[str, str] = {}
     seller_name: Optional[str] = None
     seller_rating: Optional[float] = None
     weight_kg: Optional[Decimal] = None
+    dimensions: Optional[str] = None
     is_local_bd_market: bool = False  # True for local BD benchmarks, False for China sourcing
 
 
