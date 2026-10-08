@@ -2021,6 +2021,8 @@ export default function Home() {
               onUpdateItems={setProductListItems}
               apiUrl={apiUrl}
               showToast={showToast}
+              defaultRmbRate={liveRates?.cny_to_bdt ? String(liveRates.cny_to_bdt) : globalRateRmbBdt}
+              defaultUsdRate={liveRates?.usd_to_bdt ? String(liveRates.usd_to_bdt) : '121.50'}
             />
           </section>
         )}

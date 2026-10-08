@@ -62,13 +62,17 @@ interface ProductListBuilderProps {
   onUpdateItems: (items: ProductItem[]) => void;
   apiUrl: string;
   showToast: (msg: string) => void;
+  defaultRmbRate?: string;
+  defaultUsdRate?: string;
 }
 
 export default function ProductListBuilder({
   items,
   onUpdateItems,
   apiUrl,
-  showToast
+  showToast,
+  defaultRmbRate,
+  defaultUsdRate
 }: ProductListBuilderProps) {
   // Top Header Metadata
   const getTodayDate = () => new Date().toISOString().split('T')[0];
@@ -83,8 +87,21 @@ export default function ProductListBuilder({
   const [newDetails, setNewDetails] = useState<string>('');
   const [newPrice, setNewPrice] = useState<string>('500');
   const [newCurrency, setNewCurrency] = useState<'BDT' | 'RMB' | 'USD'>('BDT');
-  const [rmbRate, setRmbRate] = useState<string>('20.00');
-  const [usdRate, setUsdRate] = useState<string>('120.00');
+  const [rmbRate, setRmbRate] = useState<string>(defaultRmbRate || '20.00');
+  const [usdRate, setUsdRate] = useState<string>(defaultUsdRate || '120.00');
+
+  // Keep rmbRate and usdRate in sync if defaults change
+  useEffect(() => {
+    if (defaultRmbRate && Number(defaultRmbRate) > 0) {
+      setRmbRate(defaultRmbRate);
+    }
+  }, [defaultRmbRate]);
+
+  useEffect(() => {
+    if (defaultUsdRate && Number(defaultUsdRate) > 0) {
+      setUsdRate(defaultUsdRate);
+    }
+  }, [defaultUsdRate]);
   
   const [newWeightVal, setNewWeightVal] = useState<string>('0.35');
   const [newWeightUnit, setNewWeightUnit] = useState<'kg' | 'gm'>('kg');
@@ -780,30 +797,140 @@ export default function ProductListBuilder({
 
             {/* Price & Currency */}
             <div>
-              <label style={labelStyle}>
-                Unit Price & Currency <span style={{ color: '#dc2626' }}>*</span>
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>
+                  Unit Price & Currency <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                {newCurrency === 'RMB' && Number(newPrice) > 0 && (
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#38bdf8' }}>
+                    ≈ ৳{((Number(newPrice) || 0) * (Number(rmbRate) || 20.0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
+                  </span>
+                )}
+                {newCurrency === 'USD' && Number(newPrice) > 0 && (
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#34d399' }}>
+                    ≈ ৳{((Number(newPrice) || 0) * (Number(usdRate) || 120.0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
+                  </span>
+                )}
+              </div>
               <div style={{ display: 'flex', gap: '6px' }}>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  min="0"
-                  value={newPrice}
-                  onChange={(e) => setNewPrice(e.target.value)}
-                  placeholder="Price"
-                  style={{ ...inputStyle, flex: 1 }}
-                />
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    min="0"
+                    value={newPrice}
+                    onChange={(e) => setNewPrice(e.target.value)}
+                    placeholder="Price"
+                    style={{ ...inputStyle, paddingRight: '28px' }}
+                  />
+                  <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: '#94a3b8', pointerEvents: 'none', fontWeight: 700 }}>
+                    {newCurrency === 'RMB' ? '¥' : newCurrency === 'USD' ? '$' : '৳'}
+                  </span>
+                </div>
                 <select
                   value={newCurrency}
                   onChange={(e) => setNewCurrency(e.target.value as any)}
-                  style={{ ...inputStyle, width: '90px', backgroundColor: '#18181b', fontWeight: 700 }}
+                  style={{ ...inputStyle, width: '95px', backgroundColor: '#18181b', fontWeight: 700 }}
                 >
                   <option value="BDT">BDT (৳)</option>
                   <option value="RMB">RMB (¥)</option>
                   <option value="USD">USD ($)</option>
                 </select>
               </div>
+
+              {/* Dynamic Live Currency Conversion Box */}
+              {newCurrency === 'RMB' && (
+                <div
+                  style={{
+                    marginTop: '8px',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(6, 182, 212, 0.08)',
+                    border: '1px solid rgba(6, 182, 212, 0.35)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.78rem', color: '#22d3ee', fontWeight: 800 }}>
+                        🇨🇳 ¥{Number(newPrice) || 0} RMB
+                      </span>
+                      <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>➔</span>
+                      <span style={{ fontSize: '0.88rem', color: '#38bdf8', fontWeight: 900 }}>
+                        ৳{((Number(newPrice) || 0) * (Number(rmbRate) || 20.0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>
+                      Rate: ৳{rmbRate}/RMB
+                    </span>
+                  </div>
+
+                  {newQuantity > 1 && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', color: '#67e8f9', borderTop: '1px dashed rgba(6, 182, 212, 0.25)', paddingTop: '4px', marginTop: '2px' }}>
+                      <span>Batch Total ({newQuantity} units):</span>
+                      <span style={{ fontWeight: 800 }}>
+                        ¥{((Number(newPrice) || 0) * newQuantity).toFixed(2)} ≈ ৳{((Number(newPrice) || 0) * (Number(rmbRate) || 20.0) * newQuantity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {newCurrency === 'USD' && (
+                <div
+                  style={{
+                    marginTop: '8px',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                    border: '1px solid rgba(16, 185, 129, 0.35)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: 800 }}>
+                        🇺🇸 ${Number(newPrice) || 0} USD
+                      </span>
+                      <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>➔</span>
+                      <span style={{ fontSize: '0.88rem', color: '#4ade80', fontWeight: 900 }}>
+                        ৳{((Number(newPrice) || 0) * (Number(usdRate) || 120.0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>
+                      Rate: ৳{usdRate}/USD
+                    </span>
+                  </div>
+
+                  {newQuantity > 1 && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', color: '#86efac', borderTop: '1px dashed rgba(16, 185, 129, 0.25)', paddingTop: '4px', marginTop: '2px' }}>
+                      <span>Batch Total ({newQuantity} units):</span>
+                      <span style={{ fontWeight: 800 }}>
+                        ${((Number(newPrice) || 0) * newQuantity).toFixed(2)} ≈ ৳{((Number(newPrice) || 0) * (Number(usdRate) || 120.0) * newQuantity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {newCurrency === 'BDT' && newQuantity > 1 && (
+                <div
+                  style={{
+                    marginTop: '6px',
+                    padding: '4px 8px',
+                    fontSize: '0.72rem',
+                    color: '#a1a1aa',
+                    fontWeight: 500
+                  }}
+                >
+                  Batch Total ({newQuantity} units): <strong style={{ color: '#f8fafc' }}>৳{((Number(newPrice) || 0) * newQuantity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT</strong>
+                </div>
+              )}
             </div>
 
             {/* Weight */}
@@ -1067,7 +1194,16 @@ export default function ProductListBuilder({
                         <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#34d399' }}>
                           ৳{lineTotalBdt.toLocaleString()}
                         </div>
-                        <div style={{ fontSize: '0.65rem', color: '#71717a' }}>৳{item.price_bdt.toLocaleString()} / unit</div>
+                        <div style={{ fontSize: '0.65rem', color: '#71717a' }}>
+                          {item.currency !== 'BDT' ? (
+                            <span>
+                              <span style={{ color: '#38bdf8', fontWeight: 600 }}>{item.currency === 'RMB' ? '¥' : '$'}{item.price}</span>
+                              {' '}➔ ৳{item.price_bdt.toLocaleString()} / unit
+                            </span>
+                          ) : (
+                            `৳${item.price_bdt.toLocaleString()} / unit`
+                          )}
+                        </div>
                       </div>
 
                       {/* Reorder & Remove Buttons */}
@@ -1275,7 +1411,9 @@ export default function ProductListBuilder({
                       <span style={{ color: '#9ca3af' }}>N/A</span>
                     )}
                   </td>
-                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: '500' }}>৳{item.price_bdt.toLocaleString()}</td>
+                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: '500' }}>
+                    {item.currency !== 'BDT' ? `${item.currency === 'RMB' ? '¥' : '$'}${item.price} (৳${item.price_bdt.toLocaleString()})` : `৳${item.price_bdt.toLocaleString()}`}
+                  </td>
                   <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>{item.quantity}</td>
                   <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold', color: '#047857' }}>
                     ৳{(item.price_bdt * item.quantity).toLocaleString()}
