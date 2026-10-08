@@ -1,0 +1,121 @@
+{
+  "customers": [
+    {
+      "name": "Rafiqul Islam (Dhaka Gadget Hub)",
+      "phone": "+8801711223344",
+      "email": "rafiq@gadgethub.bd",
+      "group": "Wholesale Buyers",
+      "category": "Electronics",
+      "city": "Dhaka",
+      "address": "Shop 42, Multiplan Center, Elephant Road, Dhaka",
+      "notes": "Prefers Ultra 8/9 series AMOLED smart watches. Buys 50+ pcs per order.",
+      "preferred_contact": "whatsapp",
+      "id": "cust_1",
+      "total_orders": 12,
+      "created_at": "2026-09-01T10:00:00Z",
+      "updated_at": "2026-10-01T12:00:00Z"
+    },
+    {
+      "name": "Tanvir Ahmed (Chittagong Gear)",
+      "phone": "+8801819876543",
+      "email": "tanvir@ctggear.com",
+      "group": "Retail Gadgets",
+      "category": "Electronics",
+      "city": "Chittagong",
+      "address": "GEC Circle, Sanmar Ocean City, Level 3, Chittagong",
+      "notes": "Fastest payment clearance. Likes air freight for 7-day arrivals.",
+      "preferred_contact": "whatsapp",
+      "id": "cust_2",
+      "total_orders": 8,
+      "created_at": "2026-09-05T11:30:00Z",
+      "updated_at": "2026-10-02T15:20:00Z"
+    },
+    {
+      "name": "Shakil Chowdhury (Sylhet Timepiece)",
+      "phone": "+8801715556677",
+      "email": "sylhettime@gmail.com",
+      "group": "Watch Retailers",
+      "category": "Smart Watches",
+      "city": "Sylhet",
+      "address": "Zindabazar Plaza, Level 2, Sylhet",
+      "notes": "Interested in Titanium casing and high-res AMOLED displays.",
+      "preferred_contact": "whatsapp",
+      "id": "cust_3",
+      "total_orders": 5,
+      "created_at": "2026-09-10T09:15:00Z",
+      "updated_at": "2026-10-05T08:45:00Z"
+    },
+    {
+      "name": "Nafisur Rahman (VIP Tech BD)",
+      "phone": "+8801912334455",
+      "email": "nafis@viptechbd.com",
+      "group": "VIP Clients",
+      "category": "High Volume",
+      "city": "Dhaka",
+      "address": "Gulshan-1 DIT Market, Dhaka",
+      "notes": "Always wants direct 1688 factory pricing + 5% sourcing commission.",
+      "preferred_contact": "whatsapp",
+      "id": "cust_4",
+      "total_orders": 19,
+      "created_at": "2026-08-15T14:20:00Z",
+      "updated_at": "2026-10-06T17:10:00Z"
+    },
+    {
+      "name": "Mahmudul Hasan (Rajshahi E-Bazaar)",
+      "phone": "+8801618990011",
+      "email": "mahmud.ebazaar@yahoo.com",
+      "group": "Dropshippers",
+      "category": "E-Commerce",
+      "city": "Rajshahi",
+      "address": "Saheb Bazaar, Rajshahi",
+      "notes": "Runs Facebook live commerce. Needs clean high-res product photos.",
+      "preferred_contact": "whatsapp",
+      "id": "cust_5",
+      "total_orders": 14,
+      "created_at": "2026-09-18T16:00:00Z",
+      "updated_at": "2026-10-07T11:00:00Z"
+    }
+  ],
+  "groups": [
+    {
+      "id": "grp_wholesale",
+      "name": "Wholesale Buyers",
+      "category": "Electronics",
+      "description": "Bulk buyers ordering 20+ units per shipment",
+      "color": "#3b82f6",
+      "member_count": 0
+    },
+    {
+      "id": "grp_retail_gadgets",
+      "name": "Retail Gadgets",
+      "category": "Electronics",
+      "description": "Retail shop owners focusing on smart watches & earbuds",
+      "color": "#10b981",
+      "member_count": 0
+    },
+    {
+      "id": "grp_watch_lovers",
+      "name": "Watch Retailers",
+      "category": "Smart Watches",
+      "description": "Specialized in luxury & Ultra series smartwatches",
+      "color": "#f59e0b",
+      "member_count": 0
+    },
+    {
+      "id": "grp_vip",
+      "name": "VIP Clients",
+      "category": "High Volume",
+      "description": "Top tier recurring clients with direct credit terms",
+      "color": "#dc2626",
+      "member_count": 0
+    },
+    {
+      "id": "grp_dropship",
+      "name": "Dropshippers",
+      "category": "E-Commerce",
+      "description": "Online page & Daraz BD sellers ordering single units",
+      "color": "#8b5cf6",
+      "member_count": 0
+    }
+  ]
+}

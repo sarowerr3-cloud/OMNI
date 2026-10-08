@@ -25,7 +25,8 @@ import {
   Printer,
   Sparkles,
   Layers,
-  Info
+  Info,
+  MessageSquare
 } from 'lucide-react';
 
 export interface ProductItem {
@@ -64,6 +65,7 @@ interface ProductListBuilderProps {
   showToast: (msg: string) => void;
   defaultRmbRate?: string;
   defaultUsdRate?: string;
+  onPitchToCustomers?: (item: ProductItem) => void;
 }
 
 export default function ProductListBuilder({
@@ -72,7 +74,8 @@ export default function ProductListBuilder({
   apiUrl,
   showToast,
   defaultRmbRate,
-  defaultUsdRate
+  defaultUsdRate,
+  onPitchToCustomers
 }: ProductListBuilderProps) {
   // Top Header Metadata
   const getTodayDate = () => new Date().toISOString().split('T')[0];
@@ -1222,6 +1225,29 @@ export default function ProductListBuilder({
                         >
                           <MoveDown style={{ width: '16px', height: '16px' }} />
                         </button>
+                        {onPitchToCustomers && (
+                          <button
+                            onClick={() => onPitchToCustomers(item)}
+                            title="Message customers about this product"
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: '6px',
+                              backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                              border: '1px solid rgba(16, 185, 129, 0.4)',
+                              color: '#34d399',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              marginLeft: '4px'
+                            }}
+                          >
+                            <MessageSquare style={{ width: '12px', height: '12px' }} />
+                            <span>Pitch</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => handleDeleteItem(item.id)}
                           style={{ padding: '4px', backgroundColor: 'transparent', color: '#f87171', border: 'none', cursor: 'pointer', marginLeft: '4px' }}

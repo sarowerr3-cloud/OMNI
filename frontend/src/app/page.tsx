@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import ProductListBuilder, { ProductItem } from '@/components/ProductListBuilder';
+import CustomerManager from '@/components/CustomerManager';
 import { SourcedProductResult, LocalMarketBenchmark, SearchResults } from '@/lib/types';
 import { formatMoney } from '@/lib/formatters';
 import { useSearchHistory } from '@/hooks/useSearchHistory';
@@ -14,8 +15,9 @@ import NegotiationModal from '@/components/NegotiationModal';
 
 export default function Home() {
   const [health, setHealth] = useState<any>(null);
-  const [searchMode, setSearchMode] = useState<'text' | 'image' | 'manual' | 'list'>('text');
+  const [searchMode, setSearchMode] = useState<'text' | 'image' | 'manual' | 'list' | 'crm'>('text');
   const [productListItems, setProductListItems] = useState<ProductItem[]>([]);
+  const [customerManagerProduct, setCustomerManagerProduct] = useState<ProductItem | null>(null);
   
   // Search history state management
   const { history: searchHistory, addSearch, removeSearch, clearHistory } = useSearchHistory();
@@ -504,6 +506,12 @@ export default function Home() {
     showToast(`✅ Added "${newItem.title}" to Product List!`);
   };
 
+  const handlePitchToCustomers = (item: ProductItem) => {
+    setCustomerManagerProduct(item);
+    setSearchMode('crm');
+    showToast(`💬 Switched to Customers & Messaging for "${item.title.substring(0, 22)}..."`);
+  };
+
   const sourcingResults = searchResults?.sourcing_results || [];
   const bdBenchmarks = searchResults?.bd_market_benchmarks || [];
   const manualMath = computeManualMath();
@@ -690,6 +698,25 @@ export default function Home() {
                 {productListItems.length}
               </span>
             )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSearchMode('crm')}
+            style={{
+              padding: '10px 18px',
+              borderRadius: '10px',
+              background: searchMode === 'crm' ? '#dc2626' : '#18181b',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: '0.95rem',
+              border: '1px solid #27272a',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <span>👥 Customers & Messaging</span>
           </button>
         </div>
 
@@ -2023,6 +2050,19 @@ export default function Home() {
               showToast={showToast}
               defaultRmbRate={liveRates?.cny_to_bdt ? String(liveRates.cny_to_bdt) : globalRateRmbBdt}
               defaultUsdRate={liveRates?.usd_to_bdt ? String(liveRates.usd_to_bdt) : '121.50'}
+              onPitchToCustomers={handlePitchToCustomers}
+            />
+          </section>
+        )}
+
+        {/* Section D: Retail Customers & Direct Messaging */}
+        {searchMode === 'crm' && (
+          <section style={{ marginBottom: '2rem' }}>
+            <CustomerManager
+              apiUrl={apiUrl}
+              productListItems={productListItems}
+              showToast={showToast}
+              initialSelectedProduct={customerManagerProduct}
             />
           </section>
         )}
