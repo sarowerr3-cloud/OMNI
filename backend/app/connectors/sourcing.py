@@ -87,47 +87,10 @@ class Mock1688Connector(AbstractProductConnector):
     async def search_by_image(self, image_bytes: bytes, limit: int = 5) -> List[ProductBase]:
         return await self.search(query="Visual Match 1688", limit=limit)
 
-
-class MockPinduoduoConnector(AbstractProductConnector):
-    @property
-    def platform_name(self) -> str:
-        return "Pinduoduo"
-
-    async def search(self, query: str, limit: int = 5) -> List[ProductBase]:
-        return [
-            ProductBase(
-                platform="Pinduoduo",
-                title_original=f"拼多多 拼团 {query} 特价 包邮",
-                title_en=f"Pinduoduo Group Buy {query} Special Discount",
-                price=Decimal("25.00"),  # RMB 25.00
-                currency="RMB",
-                price_bdt=Decimal("412.50"),
-                moq=2,
-                url="https://mobile.yangkeduo.com/goods.html?goods_id=78910",
-                images=[
-                    "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600",
-                    "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600"
-                ],
-                videos=[
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"
-                ],
-                specs={
-                    "Sales Rank": "#1 Best Seller on Pinduoduo Group Buying",
-                    "Origin": "Yiwu Commodities Distribution Center",
-                    "Package Weight": "0.32 kg",
-                    "Return Policy": "7 Days No-Reason Replacement"
-                },
-                seller_name="Yiwu Direct Supply Store",
-                seller_rating=4.75,
-                weight_kg=Decimal("0.32"),
-                dimensions="11 x 7 x 4 cm"
-            )
-        ]
-
-    async def search_by_image(self, image_bytes: bytes, limit: int = 5) -> List[ProductBase]:
-        return await self.search(query="Visual Match PDD", limit=limit)
+from backend.app.connectors.pinduoduo import pinduoduo_connector
 
 
 aliexpress_connector = MockAliExpressConnector()
 connector_1688 = Mock1688Connector()
-pdd_connector = MockPinduoduoConnector()
+pdd_connector = pinduoduo_connector
+

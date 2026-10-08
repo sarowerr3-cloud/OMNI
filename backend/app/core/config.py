@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     CLAUDE_API_KEY: Optional[str] = None
     CLAUDE_MODEL: str = "claude-3-5-sonnet-20241022"
 
+    # Pinduoduo (拼多多) Sourcing API Settings
+    PDD_CLIENT_ID: Optional[str] = None
+    PDD_CLIENT_SECRET: Optional[str] = None
+    PROVIDER_PDD_BASE_URL: Optional[str] = None
+    PROVIDER_PDD_API_KEY: Optional[str] = None
+
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./test.db"
 

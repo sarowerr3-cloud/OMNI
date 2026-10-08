@@ -1138,6 +1138,21 @@ export default function Home() {
                     onClear={clearHistory}
                   />
 
+                  {/* Connected Live Sourcing Networks */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', fontSize: '0.75rem', marginBottom: '4px' }}>
+                    <span style={{ color: '#a1a1aa', fontWeight: 600 }}>Real-Time Sourcing:</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.35)', padding: '2px 9px', borderRadius: '9999px', fontWeight: 700 }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444', display: 'inline-block', boxShadow: '0 0 6px #ef4444' }} />
+                      拼多多 Pinduoduo Real-Time
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(255, 255, 255, 0.05)', color: '#e2e8f0', border: '1px solid rgba(255, 255, 255, 0.1)', padding: '2px 9px', borderRadius: '9999px' }}>
+                      1688 Factory Direct
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(255, 255, 255, 0.05)', color: '#e2e8f0', border: '1px solid rgba(255, 255, 255, 0.1)', padding: '2px 9px', borderRadius: '9999px' }}>
+                      AliExpress Global
+                    </span>
+                  </div>
+
                   {/* Quick Trending Product Chips */}
                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.75rem', color: '#a1a1aa', fontWeight: 600, marginRight: '4px' }}>🔥 Trending Searches:</span>
@@ -2151,9 +2166,14 @@ export default function Home() {
 
                       <div>
                         {/* Header Badge */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                          <span style={{ fontWeight: 800, color: '#dc2626', fontSize: '1.1rem' }}>
-                            {res.product?.platform}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '6px' }}>
+                          <span style={{ fontWeight: 800, color: '#dc2626', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {res.product?.platform === 'Pinduoduo' ? '🇨🇳 拼多多 Pinduoduo' : res.product?.platform === '1688' ? '🇨🇳 1688 Factory Direct' : '🌐 AliExpress Global'}
+                            {res.product?.platform === 'Pinduoduo' && (
+                              <span style={{ fontSize: '0.65rem', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.35)', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>
+                                LIVE GROUP-BUY
+                              </span>
+                            )}
                           </span>
                           <span style={{ color: '#a1a1aa', fontSize: '0.8rem', background: '#09090b', padding: '3px 8px', borderRadius: '6px' }}>
                             ⭐ {res.product?.seller_rating || 4.8} | MOQ: {res.product?.moq || 1} pcs

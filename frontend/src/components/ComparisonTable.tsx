@@ -168,7 +168,9 @@ export default function ComparisonTable({ results, rmbRate }: ComparisonTablePro
                     }}
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                      <span style={{ color: '#dc2626' }}>{r.product.platform}</span>
+                      <span style={{ color: '#dc2626' }}>
+                        {r.product.platform === 'Pinduoduo' ? '拼多多 Pinduoduo' : r.product.platform}
+                      </span>
                       {idx === 0 && (
                         <span
                           style={{
