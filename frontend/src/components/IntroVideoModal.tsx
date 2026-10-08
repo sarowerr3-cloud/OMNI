@@ -35,6 +35,8 @@ export default function IntroVideoModal({
   const [currentStepText, setCurrentStepText] = useState<string>('Initializing OMNI Sourcing Engine...');
   const [activeVideoSrc, setActiveVideoSrc] = useState<string>(videoSrc);
   const [customVideoUploaded, setCustomVideoUploaded] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [uploadSuccessMessage, setUploadSuccessMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -44,8 +46,11 @@ export default function IntroVideoModal({
       setDontShowAgain(true);
     }
     const savedCustomVid = localStorage.getItem('omni_custom_intro_video');
-    if (savedCustomVid) {
+    if (savedCustomVid && !savedCustomVid.startsWith('blob:')) {
       setActiveVideoSrc(savedCustomVid);
+    } else {
+      localStorage.removeItem('omni_custom_intro_video');
+      setActiveVideoSrc('/intro.mp4');
     }
   }, []);
 
@@ -100,16 +105,47 @@ export default function IntroVideoModal({
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      const url = URL.createObjectURL(file);
-      setActiveVideoSrc(url);
+      setUploading(true);
+      setUploadSuccessMessage(null);
+
+      // Immediately preview local video in video player
+      const localPreviewUrl = URL.createObjectURL(file);
+      setActiveVideoSrc(localPreviewUrl);
       setCustomVideoUploaded(file.name);
-      localStorage.setItem('omni_custom_intro_video', url);
       if (videoRef.current) {
-        videoRef.current.src = url;
+        videoRef.current.src = localPreviewUrl;
         videoRef.current.play();
+      }
+
+      // Upload permanently to server to replace public/intro.mp4 as permanent default
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch('/api/upload-video', {
+          method: 'POST',
+          body: formData,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          localStorage.removeItem('omni_custom_intro_video');
+          const finalUrl = data.url || '/intro.mp4';
+          setActiveVideoSrc(finalUrl);
+          setUploadSuccessMessage('Saved permanently as default video!');
+          if (videoRef.current) {
+            videoRef.current.src = finalUrl;
+            videoRef.current.play();
+          }
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          console.error('Upload failed:', errData);
+        }
+      } catch (err) {
+        console.error('Failed to permanently upload custom video:', err);
+      } finally {
+        setUploading(false);
       }
     }
   };
@@ -215,24 +251,34 @@ export default function IntroVideoModal({
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            title="Upload custom MP4 video"
+            disabled={uploading}
+            title="Upload custom MP4 video and set as permanent default"
             style={{
-              padding: '6px 12px',
+              padding: '6px 14px',
               borderRadius: '9999px',
-              backgroundColor: 'rgba(24, 24, 27, 0.75)',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
+              backgroundColor: uploadSuccessMessage ? 'rgba(21, 128, 61, 0.85)' : 'rgba(24, 24, 27, 0.75)',
+              border: uploadSuccessMessage ? '1px solid #22c55e' : '1px solid rgba(255, 255, 255, 0.2)',
               backdropFilter: 'blur(10px)',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
               fontSize: '0.75rem',
-              color: '#e2e8f0',
+              color: '#ffffff',
               fontWeight: 600,
-              cursor: 'pointer'
+              cursor: uploading ? 'wait' : 'pointer',
+              transition: 'all 0.2s',
             }}
           >
             <Upload style={{ width: '12px', height: '12px' }} />
-            <span>{customVideoUploaded ? 'Custom Video Set' : 'Custom MP4'}</span>
+            <span>
+              {uploading
+                ? 'Saving Permanently...'
+                : uploadSuccessMessage
+                ? 'Permanent Default ✓'
+                : customVideoUploaded
+                ? `Default: ${customVideoUploaded}`
+                : 'Upload & Set Default MP4'}
+            </span>
           </button>
           <input
             type="file"
