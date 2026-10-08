@@ -51,19 +51,19 @@ export default function Home() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Manual Calculator State (Defaults: 20.00 RMB/BDT rate, 1.2 Tk/gm freight rate)
-  const [manualRmbPrice, setManualRmbPrice] = useState<string>('28.00');
+  // Manual Calculator State (Defaults: 20.00 RMB/BDT rate, 1.2 Tk/gm freight rate, all input boxes empty by default)
+  const [manualRmbPrice, setManualRmbPrice] = useState<string>('');
   const [manualRateRmb, setManualRateRmb] = useState<string>('20.00');
-  const [manualQty, setManualQty] = useState<number>(10);
-  const [manualWeightVal, setManualWeightVal] = useState<string>('350');
+  const [manualQty, setManualQty] = useState<string>('');
+  const [manualWeightVal, setManualWeightVal] = useState<string>('');
   const [manualWeightUnit, setManualWeightUnit] = useState<'kg' | 'gm'>('gm');
   const [manualFreightRate, setManualFreightRate] = useState<string>('1.2');
   const [manualFreightUnit, setManualFreightUnit] = useState<'per_kg' | 'per_gm'>('per_gm');
-  const [manualDomesticShipping, setManualDomesticShipping] = useState<string>('20.00');
-  const [manualAgentFeePct, setManualAgentFeePct] = useState<string>('5.00');
-  const [manualDutyPct, setManualDutyPct] = useState<string>('15.00');
-  const [manualOtherCosts, setManualOtherCosts] = useState<string>('50.00');
-  const [manualTargetPrice, setManualTargetPrice] = useState<string>('1500.00');
+  const [manualDomesticShipping, setManualDomesticShipping] = useState<string>('');
+  const [manualAgentFeePct, setManualAgentFeePct] = useState<string>('');
+  const [manualDutyPct, setManualDutyPct] = useState<string>('');
+  const [manualOtherCosts, setManualOtherCosts] = useState<string>('');
+  const [manualTargetPrice, setManualTargetPrice] = useState<string>('');
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -137,11 +137,11 @@ export default function Home() {
       });
   }, [apiUrl]);
 
-  // Synchronize live exchange rates when available
+  // Synchronize live exchange rates when available (preserve user manual calculator rate)
   useEffect(() => {
     if (liveRates?.cny_to_bdt && liveRates.cny_to_bdt > 0) {
       setGlobalRateRmbBdt(liveRates.cny_to_bdt.toFixed(2));
-      setManualRateRmb(liveRates.cny_to_bdt.toFixed(2));
+      // manualRateRmb defaults to 20.00 Tk as explicitly requested by user
     }
   }, [liveRates?.cny_to_bdt]);
 
@@ -157,35 +157,62 @@ export default function Home() {
   const computeManualMath = () => {
     const rmbPrice = Number(manualRmbPrice) || 0;
     const rate = Number(manualRateRmb) || 20.00;
-    const qty = Math.max(1, Number(manualQty) || 1);
+    const qty = Number(manualQty) > 0 ? Number(manualQty) : 0;
     const weightVal = Number(manualWeightVal) || 0;
     const weightKg = manualWeightUnit === 'gm' ? weightVal / 1000.0 : weightVal;
-    const totalWeightKg = weightKg * qty;
+    const totalWeightKg = qty > 0 ? weightKg * qty : weightKg;
 
     const freightRate = Number(manualFreightRate) || 0;
-    let freightBdt = 0;
+    let unitFreightBdt = 0;
     if (manualFreightUnit === 'per_gm') {
-      const totalWeightGm = manualWeightUnit === 'gm' ? weightVal * qty : weightVal * 1000.0 * qty;
-      freightBdt = totalWeightGm * freightRate;
+      const unitWeightGm = manualWeightUnit === 'gm' ? weightVal : weightVal * 1000.0;
+      unitFreightBdt = unitWeightGm * freightRate;
     } else {
-      freightBdt = totalWeightKg * freightRate;
+      unitFreightBdt = weightKg * freightRate;
     }
+    const freightBdt = unitFreightBdt * (qty > 0 ? qty : 1);
 
-    const itemPriceBdt = rmbPrice * rate * qty;
-    const domesticShippingBdt = (Number(manualDomesticShipping) || 0) * qty;
-    const agentFeeBdt = itemPriceBdt * ((Number(manualAgentFeePct) || 0) / 100.0);
-    const dutyVatBdt = itemPriceBdt * ((Number(manualDutyPct) || 0) / 100.0);
+    const unitItemPriceBdt = rmbPrice * rate;
+    const itemPriceBdt = unitItemPriceBdt * (qty > 0 ? qty : 1);
+
+    const unitDomesticShippingBdt = Number(manualDomesticShipping) || 0;
+    const domesticShippingBdt = unitDomesticShippingBdt * (qty > 0 ? qty : 1);
+
+    const agentFeePct = Number(manualAgentFeePct) || 0;
+    const unitAgentFeeBdt = unitItemPriceBdt * (agentFeePct / 100.0);
+    const agentFeeBdt = unitAgentFeeBdt * (qty > 0 ? qty : 1);
+
+    const dutyPct = Number(manualDutyPct) || 0;
+    const unitDutyVatBdt = unitItemPriceBdt * (dutyPct / 100.0);
+    const dutyVatBdt = unitDutyVatBdt * (qty > 0 ? qty : 1);
+
     const otherCostsBdt = Number(manualOtherCosts) || 0;
+    const unitOtherCostsBdt = qty > 0 ? otherCostsBdt / qty : otherCostsBdt;
 
-    const totalLandedCost = itemPriceBdt + domesticShippingBdt + agentFeeBdt + freightBdt + dutyVatBdt + otherCostsBdt;
-    const perUnitLandedCost = totalLandedCost / qty;
+    // Per-unit landed cost
+    const perUnitLandedCost =
+      unitItemPriceBdt +
+      unitDomesticShippingBdt +
+      unitAgentFeeBdt +
+      unitFreightBdt +
+      unitDutyVatBdt +
+      unitOtherCostsBdt;
 
-    const targetPrice = Number(manualTargetPrice) || perUnitLandedCost * 1.4;
-    const netProfit = targetPrice - perUnitLandedCost;
-    const batchTotalProfit = netProfit * qty;
-    const grossMargin = targetPrice > 0 ? (netProfit / targetPrice) * 100 : 0;
-    const roi = perUnitLandedCost > 0 ? (netProfit / perUnitLandedCost) * 100 : 0;
-    const breakEvenUnits = targetPrice > 0 ? Math.ceil(totalLandedCost / targetPrice) : qty;
+    // Total landed cost (for batch or unit)
+    const totalLandedCost = qty > 0 ? perUnitLandedCost * qty : perUnitLandedCost;
+
+    const targetPrice = Number(manualTargetPrice) || 0;
+    const hasTargetPrice = targetPrice > 0;
+    const hasCost = perUnitLandedCost > 0;
+
+    const netProfit = hasTargetPrice ? targetPrice - perUnitLandedCost : 0;
+    const batchTotalProfit = qty > 0 ? netProfit * qty : (hasTargetPrice ? netProfit : 0);
+    const grossMargin = (hasTargetPrice && targetPrice > 0) ? ((targetPrice - perUnitLandedCost) / targetPrice) * 100 : 0;
+    const roi = (hasTargetPrice && hasCost) ? ((targetPrice - perUnitLandedCost) / perUnitLandedCost) * 100 : 0;
+    const breakEvenUnits =
+      hasTargetPrice && targetPrice > 0 && totalLandedCost > 0
+        ? Math.ceil(totalLandedCost / targetPrice)
+        : (qty > 0 ? qty : 1);
 
     // Cost distribution percentages for visual bar
     const itemPct = totalLandedCost > 0 ? (itemPriceBdt / totalLandedCost) * 100 : 0;
@@ -203,6 +230,8 @@ export default function Home() {
       totalLandedCost,
       perUnitLandedCost,
       targetPrice,
+      hasTargetPrice,
+      hasCost,
       netProfit,
       batchTotalProfit,
       breakEvenUnits,
@@ -218,29 +247,35 @@ export default function Home() {
 
   const copyManualQuotation = () => {
     const math = computeManualMath();
+    if (math.perUnitLandedCost === 0) {
+      showToast('⚠️ Calculator is empty. Please enter RMB price or weight first!');
+      return;
+    }
     const text = [
       '========================================',
       '📦 OMNI SOURCING & LANDED COST QUOTATION',
       '========================================',
-      '• RMB Unit Price: ¥' + manualRmbPrice + ' (Rate: ৳' + manualRateRmb + '/RMB)',
-      '• Order Quantity: ' + manualQty + ' pcs',
-      '• Weight per unit: ' + manualWeightVal + ' ' + manualWeightUnit + ' (Total: ' + math.totalWeightKg + ' kg)',
-      '• Freight Rate: ৳' + manualFreightRate + ' ' + (manualFreightUnit === 'per_gm' ? '/ gram' : '/ kg'),
+      '• RMB Unit Price: ¥' + (manualRmbPrice || '0') + ' (Rate: ৳' + (manualRateRmb || '20.00') + '/RMB)',
+      '• Order Quantity: ' + (manualQty || '1') + ' pcs',
+      '• Weight per unit: ' + (manualWeightVal || '0') + ' ' + manualWeightUnit + ' (Total: ' + math.totalWeightKg + ' kg)',
+      '• Freight Rate: ৳' + (manualFreightRate || '1.2') + ' ' + (manualFreightUnit === 'per_gm' ? '/ gram' : '/ kg'),
       '----------------------------------------',
       '💰 ITEMIZED COST BREAKDOWN (BDT ৳):',
       '• Total Product Cost: ৳' + formatMoney(math.itemPriceBdt),
       '• Domestic Freight (China): ৳' + formatMoney(math.domesticShippingBdt),
-      '• Agent Sourcing Fee (' + manualAgentFeePct + '%): ৳' + formatMoney(Math.round(math.agentFeeBdt)),
+      '• Agent Sourcing Fee (' + (manualAgentFeePct || '0') + '%): ৳' + formatMoney(Math.round(math.agentFeeBdt)),
       '• International Freight: ৳' + formatMoney(math.freightBdt),
-      '• Customs Duty & Tax (' + manualDutyPct + '%): ৳' + formatMoney(Math.round(math.dutyVatBdt)),
+      '• Customs Duty & Tax (' + (manualDutyPct || '0') + '%): ৳' + formatMoney(Math.round(math.dutyVatBdt)),
       '• Other Overhead: ৳' + formatMoney(math.otherCostsBdt),
       '----------------------------------------',
       '💵 TOTAL LANDED COST: ৳' + formatMoney(math.totalLandedCost) + ' BDT',
       '🎯 LANDED COST PER UNIT: ৳' + formatMoney(math.perUnitLandedCost) + ' BDT',
-      '🏷️ TARGET SELLING PRICE: ৳' + formatMoney(math.targetPrice) + ' BDT',
-      '🟢 ESTIMATED NET PROFIT / UNIT: ৳' + formatMoney(math.netProfit) + ' BDT',
-      '📈 GROSS MARGIN: ' + math.grossMargin + '% | ROI: ' + math.roi + '%',
-      '💰 TOTAL BATCH NET PROFIT: ৳' + formatMoney(math.batchTotalProfit) + ' BDT',
+      ...(math.hasTargetPrice ? [
+        '🏷️ TARGET SELLING PRICE: ৳' + formatMoney(math.targetPrice) + ' BDT',
+        '🟢 ESTIMATED NET PROFIT / UNIT: ৳' + formatMoney(math.netProfit) + ' BDT',
+        '📈 GROSS MARGIN: ' + math.grossMargin + '% | ROI: ' + math.roi + '%',
+        '💰 TOTAL BATCH NET PROFIT: ৳' + formatMoney(math.batchTotalProfit) + ' BDT',
+      ] : []),
       '========================================',
       'Generated by OMNI Sourcing & Intelligence System',
     ].join('\n');
@@ -250,24 +285,28 @@ export default function Home() {
   };
 
   const handleDownloadPdf = async () => {
+    const math = computeManualMath();
+    if (math.perUnitLandedCost === 0) {
+      showToast('⚠️ Calculator is empty. Please enter RMB price or weight first!');
+      return;
+    }
     setExportingPdf(true);
     try {
-      const math = computeManualMath();
       await exportQuotationPdf(
         {
           productTitle: query.trim() || 'Custom China Sourced Item',
-          rmbPrice: manualRmbPrice,
-          rmbRate: manualRateRmb,
-          quantity: manualQty,
-          weightVal: manualWeightVal,
+          rmbPrice: manualRmbPrice || '0',
+          rmbRate: manualRateRmb || '20.00',
+          quantity: Number(manualQty) || 1,
+          weightVal: manualWeightVal || '0',
           weightUnit: manualWeightUnit,
           totalWeightKg: math.totalWeightKg,
-          freightRate: manualFreightRate,
+          freightRate: manualFreightRate || '1.2',
           freightUnit: manualFreightUnit,
-          domesticShipping: manualDomesticShipping,
-          agentFeePct: manualAgentFeePct,
-          dutyPct: manualDutyPct,
-          otherCosts: manualOtherCosts,
+          domesticShipping: manualDomesticShipping || '0',
+          agentFeePct: manualAgentFeePct || '0',
+          dutyPct: manualDutyPct || '0',
+          otherCosts: manualOtherCosts || '0',
           itemPriceBdt: math.itemPriceBdt,
           domesticShippingBdt: math.domesticShippingBdt,
           agentFeeBdt: math.agentFeeBdt,
@@ -295,27 +334,29 @@ export default function Home() {
   };
 
   const resetManualDefaults = () => {
-    setManualRmbPrice('28.00');
+    setManualRmbPrice('');
     setManualRateRmb('20.00');
-    setManualQty(10);
-    setManualWeightVal('350');
+    setManualQty('');
+    setManualWeightVal('');
     setManualWeightUnit('gm');
     setManualFreightRate('1.2');
     setManualFreightUnit('per_gm');
-    setManualDomesticShipping('20.00');
-    setManualAgentFeePct('5.00');
-    setManualDutyPct('15.00');
-    setManualOtherCosts('50.00');
-    setManualTargetPrice('1500.00');
-    showToast('🔄 Reset Manual Calculator to Default Values (20 RMB | 1.2 Tk/gm)');
+    setManualDomesticShipping('');
+    setManualAgentFeePct('');
+    setManualDutyPct('');
+    setManualOtherCosts('');
+    setManualTargetPrice('');
+    showToast('🔄 Calculator Reset: RMB rate set to ৳20.00, Freight to ৳1.2/gm, all boxes cleared');
   };
 
   const applyTargetMarginPreset = (marginPct: number) => {
     const math = computeManualMath();
     if (math.perUnitLandedCost > 0) {
-      const target = math.perUnitLandedCost / (1 - marginPct / 100.0);
+      const target = marginPct === 100 ? math.perUnitLandedCost * 2 : math.perUnitLandedCost / (1 - marginPct / 100.0);
       setManualTargetPrice(target.toFixed(2));
-      showToast('🎯 Applied ' + marginPct + '% Target Profit Margin Preset');
+      showToast('🎯 Applied ' + marginPct + '% Target Profit Margin Preset (৳' + target.toFixed(2) + ')');
+    } else {
+      showToast('⚠️ Please enter RMB price or weight first to calculate landed cost');
     }
   };
 
@@ -522,11 +563,15 @@ export default function Home() {
   };
 
   const addManualProductToList = () => {
-    const rmbPrice = Number(manualRmbPrice) || 28;
-    const rate = Number(manualRateRmb) || 20;
+    const rmbPrice = Number(manualRmbPrice);
+    if (!rmbPrice || rmbPrice <= 0) {
+      showToast('⚠️ Please enter a valid RMB Product Price in box #1 first!');
+      return;
+    }
+    const rate = Number(manualRateRmb) || 20.00;
+    const qty = Number(manualQty) > 0 ? Number(manualQty) : 1;
     const priceBdt = rmbPrice * rate;
-    const qty = Math.max(1, Number(manualQty) || 1);
-    const weightVal = Number(manualWeightVal) || 350;
+    const weightVal = Number(manualWeightVal) || 0;
     const weightKg = manualWeightUnit === 'gm' ? weightVal / 1000.0 : weightVal;
     const lineTotal = priceBdt * qty;
 
@@ -1479,18 +1524,22 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={resetManualDefaults}
+                  title="Reset calculator to RMB 20.00 and Freight 1.2 Tk/gm with all other boxes empty"
                   style={{
-                    background: 'rgba(255, 255, 255, 0.05)',
+                    background: 'rgba(255, 255, 255, 0.06)',
                     color: '#f8fafc',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
                     borderRadius: '8px',
                     padding: '8px 14px',
                     fontSize: '0.82rem',
                     fontWeight: 600,
                     cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
                   }}
                 >
-                  🔄 Reset Defaults
+                  🔄 Reset (20 Tk | 1.2/gm)
                 </button>
               </div>
             </div>
@@ -1593,6 +1642,7 @@ export default function Home() {
                 <input
                   type="number"
                   step="0.1"
+                  placeholder="0.00"
                   value={manualRmbPrice}
                   onChange={(e) => setManualRmbPrice(e.target.value)}
                   style={{ width: '100%', background: '#09090b', border: '1px solid #dc2626', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontWeight: 700 }}
@@ -1606,6 +1656,7 @@ export default function Home() {
                 <input
                   type="number"
                   step="0.05"
+                  placeholder="20.00"
                   value={manualRateRmb}
                   onChange={(e) => setManualRateRmb(e.target.value)}
                   style={{ width: '100%', background: '#09090b', border: '1px solid #dc2626', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontWeight: 700 }}
@@ -1619,8 +1670,9 @@ export default function Home() {
                 <input
                   type="number"
                   min="1"
+                  placeholder="0"
                   value={manualQty}
-                  onChange={(e) => setManualQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(e) => setManualQty(e.target.value)}
                   style={{ width: '100%', background: '#09090b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '8px 12px', color: '#fff' }}
                 />
               </div>
@@ -1633,6 +1685,7 @@ export default function Home() {
                   <input
                     type="number"
                     step="0.05"
+                    placeholder="0"
                     value={manualWeightVal}
                     onChange={(e) => setManualWeightVal(e.target.value)}
                     style={{ flex: 1, background: '#09090b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '8px 12px', color: '#fff' }}
@@ -1656,6 +1709,7 @@ export default function Home() {
                   <input
                     type="number"
                     step="0.1"
+                    placeholder="1.2"
                     value={manualFreightRate}
                     onChange={(e) => setManualFreightRate(e.target.value)}
                     style={{ flex: 1, background: '#09090b', border: '1px solid #dc2626', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontWeight: 700 }}
@@ -1677,6 +1731,7 @@ export default function Home() {
                 </label>
                 <input
                   type="number"
+                  placeholder="0.00"
                   value={manualDomesticShipping}
                   onChange={(e) => setManualDomesticShipping(e.target.value)}
                   style={{ width: '100%', background: '#09090b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '8px 12px', color: '#fff' }}
@@ -1690,6 +1745,7 @@ export default function Home() {
                 <input
                   type="number"
                   step="0.5"
+                  placeholder="0"
                   value={manualAgentFeePct}
                   onChange={(e) => setManualAgentFeePct(e.target.value)}
                   style={{ width: '100%', background: '#09090b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '8px 12px', color: '#fff' }}
@@ -1703,6 +1759,7 @@ export default function Home() {
                 <input
                   type="number"
                   step="0.5"
+                  placeholder="0"
                   value={manualDutyPct}
                   onChange={(e) => setManualDutyPct(e.target.value)}
                   style={{ width: '100%', background: '#09090b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '8px 12px', color: '#fff' }}
@@ -1715,6 +1772,7 @@ export default function Home() {
                 </label>
                 <input
                   type="number"
+                  placeholder="0.00"
                   value={manualOtherCosts}
                   onChange={(e) => setManualOtherCosts(e.target.value)}
                   style={{ width: '100%', background: '#09090b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '8px 12px', color: '#fff' }}
@@ -1729,6 +1787,7 @@ export default function Home() {
                 </div>
                 <input
                   type="number"
+                  placeholder="0.00"
                   value={manualTargetPrice}
                   onChange={(e) => setManualTargetPrice(e.target.value)}
                   style={{ width: '100%', background: '#09090b', border: '1px solid #22c55e', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontWeight: 700 }}
@@ -1770,8 +1829,43 @@ export default function Home() {
                 {/* Profitability Health Pill */}
                 {(() => {
                   const math = computeManualMath();
-                  let isHigh = math.grossMargin >= 30;
-                  let isModerate = math.grossMargin >= 15 && math.grossMargin < 30;
+                  if (!math.hasCost && !math.hasTargetPrice) {
+                    return (
+                      <span
+                        style={{
+                          padding: '4px 12px',
+                          borderRadius: '9999px',
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          color: '#a1a1aa',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                        }}
+                      >
+                        ⚪ READY (ENTER PRODUCT DETAILS)
+                      </span>
+                    );
+                  }
+                  if (math.hasCost && !math.hasTargetPrice) {
+                    return (
+                      <span
+                        style={{
+                          padding: '4px 12px',
+                          borderRadius: '9999px',
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          background: 'rgba(56, 189, 248, 0.12)',
+                          color: '#38bdf8',
+                          border: '1px solid rgba(56, 189, 248, 0.3)',
+                        }}
+                      >
+                        🎯 ENTER TARGET SELLING PRICE
+                      </span>
+                    );
+                  }
+                  const isHigh = math.grossMargin >= 30;
+                  const isModerate = math.grossMargin >= 15 && math.grossMargin < 30;
+                  const isPositive = math.grossMargin > 0;
                   return (
                     <span
                       style={{
@@ -1779,12 +1873,26 @@ export default function Home() {
                         borderRadius: '9999px',
                         fontSize: '0.75rem',
                         fontWeight: 800,
-                        background: isHigh ? 'rgba(34, 197, 94, 0.15)' : isModerate ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                        color: isHigh ? '#22c55e' : isModerate ? '#f59e0b' : '#ef4444',
-                        border: '1px solid ' + (isHigh ? '#22c55e' : isModerate ? '#f59e0b' : '#ef4444'),
+                        background: isHigh
+                          ? 'rgba(34, 197, 94, 0.15)'
+                          : isModerate
+                          ? 'rgba(245, 158, 11, 0.15)'
+                          : isPositive
+                          ? 'rgba(249, 115, 22, 0.15)'
+                          : 'rgba(239, 68, 68, 0.15)',
+                        color: isHigh ? '#22c55e' : isModerate ? '#f59e0b' : isPositive ? '#f97316' : '#ef4444',
+                        border:
+                          '1px solid ' +
+                          (isHigh ? '#22c55e' : isModerate ? '#f59e0b' : isPositive ? '#f97316' : '#ef4444'),
                       }}
                     >
-                      {isHigh ? '🟢 HIGH PROFITABILITY' : isModerate ? '🟡 MODERATE MARGIN' : '🔴 THIN MARGIN / RISK'}
+                      {isHigh
+                        ? `🟢 HIGH PROFITABILITY (${math.grossMargin}%)`
+                        : isModerate
+                        ? `🟡 MODERATE MARGIN (${math.grossMargin}%)`
+                        : isPositive
+                        ? `🟠 THIN MARGIN (${math.grossMargin}%)`
+                        : `🔴 UNPROFITABLE / LOSS (${math.grossMargin}%)`}
                     </span>
                   );
                 })()}
@@ -1830,7 +1938,7 @@ export default function Home() {
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                        <span style={{ color: '#a1a1aa' }}>Total Product Cost (¥{manualRmbPrice} × ৳{manualRateRmb}):</span>
+                        <span style={{ color: '#a1a1aa' }}>Total Product Cost (¥{manualRmbPrice || '0'} × ৳{manualRateRmb || '20.00'}):</span>
                         <span style={{ fontWeight: 600 }}>৳{formatMoney(math.itemPriceBdt)} Tk / BDT</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
@@ -1838,15 +1946,15 @@ export default function Home() {
                         <span>৳{formatMoney(math.domesticShippingBdt)} Tk / BDT</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                        <span style={{ color: '#a1a1aa' }}>Agent Sourcing Fee ({manualAgentFeePct}%):</span>
+                        <span style={{ color: '#a1a1aa' }}>Agent Sourcing Fee ({manualAgentFeePct || '0'}%):</span>
                         <span>৳{formatMoney(Math.round(math.agentFeeBdt))} Tk / BDT</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                        <span style={{ color: '#a1a1aa' }}>International Freight ({math.totalWeightKg} kg @ ৳{manualFreightRate} {manualFreightUnit === 'per_gm' ? '/gm' : '/kg'}):</span>
+                        <span style={{ color: '#a1a1aa' }}>International Freight ({math.totalWeightKg} kg @ ৳{manualFreightRate || '1.2'} {manualFreightUnit === 'per_gm' ? '/gm' : '/kg'}):</span>
                         <span style={{ color: '#38bdf8', fontWeight: 600 }}>৳{formatMoney(math.freightBdt)} Tk / BDT</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                        <span style={{ color: '#a1a1aa' }}>Customs Duty & Tax ({manualDutyPct}%):</span>
+                        <span style={{ color: '#a1a1aa' }}>Customs Duty & Tax ({manualDutyPct || '0'}%):</span>
                         <span>৳{formatMoney(Math.round(math.dutyVatBdt))} Tk / BDT</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
@@ -1857,7 +1965,7 @@ export default function Home() {
                       <hr style={{ borderColor: '#27272a', margin: '8px 0' }} />
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '1.1rem' }}>
-                        <span style={{ color: '#ffffff' }}>Total Landed Cost ({manualQty} pcs):</span>
+                        <span style={{ color: '#ffffff' }}>Total Landed Cost ({manualQty || '1'} pcs):</span>
                         <span style={{ color: '#38bdf8' }}>৳{formatMoney(math.totalLandedCost)} Tk / BDT</span>
                       </div>
 
@@ -1877,42 +1985,42 @@ export default function Home() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Target Selling Price / Unit:</span>
                         <span style={{ color: '#ffffff', fontWeight: 800, fontSize: '1.1rem' }}>
-                          ৳{formatMoney(math.targetPrice)} Tk / BDT
+                          {math.hasTargetPrice ? `৳${formatMoney(math.targetPrice)} Tk / BDT` : '—'}
                         </span>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Est. Net Profit / Unit:</span>
-                        <span style={{ color: '#22c55e', fontWeight: 800, fontSize: '1.25rem' }}>
-                          ৳{formatMoney(math.netProfit)} Tk / BDT
+                        <span style={{ color: math.hasTargetPrice ? (math.netProfit >= 0 ? '#22c55e' : '#ef4444') : '#a1a1aa', fontWeight: 800, fontSize: '1.25rem' }}>
+                          {math.hasTargetPrice ? `৳${formatMoney(math.netProfit)} Tk / BDT` : '—'}
                         </span>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Batch Net Profit ({manualQty} pcs):</span>
-                        <span style={{ color: '#22c55e', fontWeight: 800, fontSize: '1.1rem' }}>
-                          ৳{formatMoney(math.batchTotalProfit)} BDT
+                        <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Batch Net Profit ({manualQty || '1'} pcs):</span>
+                        <span style={{ color: math.hasTargetPrice ? (math.batchTotalProfit >= 0 ? '#22c55e' : '#ef4444') : '#a1a1aa', fontWeight: 800, fontSize: '1.1rem' }}>
+                          {math.hasTargetPrice ? `৳${formatMoney(math.batchTotalProfit)} BDT` : '—'}
                         </span>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>Gross Margin:</span>
                         <span style={{ color: '#38bdf8', fontWeight: 800, fontSize: '1.1rem' }}>
-                          {math.grossMargin}%
+                          {math.hasTargetPrice ? `${math.grossMargin}%` : '—'}
                         </span>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>ROI %:</span>
                         <span style={{ color: '#f59e0b', fontWeight: 800, fontSize: '1.1rem' }}>
-                          {math.roi}%
+                          {math.hasTargetPrice ? `${math.roi}%` : '—'}
                         </span>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px', borderTop: '1px dashed #27272a' }}>
                         <span style={{ color: '#a1a1aa', fontSize: '0.8rem' }}>Break-Even Quantity:</span>
                         <span style={{ color: '#a855f7', fontWeight: 700, fontSize: '0.9rem' }}>
-                          {math.breakEvenUnits} pcs to break even
+                          {math.hasTargetPrice && math.targetPrice > 0 ? `${math.breakEvenUnits} pcs to break even` : '—'}
                         </span>
                       </div>
                     </div>
