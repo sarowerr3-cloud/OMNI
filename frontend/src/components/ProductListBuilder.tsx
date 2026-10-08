@@ -538,11 +538,13 @@ export default function ProductListBuilder({
       <div 
         className="no-print"
         style={{
-          backgroundColor: '#18181b',
-          border: '1px solid #27272a',
+          background: 'rgba(24, 24, 27, 0.72)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
           borderRadius: '16px',
           padding: '1.5rem',
-          boxShadow: '0 4px 25px rgba(0, 0, 0, 0.5)'
+          boxShadow: '0 4px 24px -1px rgba(0, 0, 0, 0.45)'
         }}
       >
         {/* TOP BAR: Title & Action Buttons */}

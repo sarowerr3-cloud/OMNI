@@ -528,110 +528,206 @@ export default function Home() {
   const manualMath = computeManualMath();
 
   return (
-    <div style={{ minHeight: '100vh', background: '#09090b', color: '#f8fafc', padding: '1.5rem 1rem' }}>
-      {/* Header with OMNI Logo */}
-      <header
-        style={{
-          maxWidth: '1100px',
-          margin: '0 auto 2rem auto',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '1rem',
-          paddingBottom: '1rem',
-          borderBottom: '1px solid #27272a',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div
-            style={{
-              background: '#ffffff',
-              padding: '6px 12px',
-              borderRadius: '10px',
-              display: 'flex',
-              alignItems: 'center',
-              boxShadow: '0 0 15px rgba(220, 38, 38, 0.3)',
-            }}
-          >
-            <img src="/logo.png" alt="OMNI Logo" style={{ height: '42px', objectFit: 'contain' }} />
-          </div>
-          <div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#ffffff', letterSpacing: '0.5px' }}>
-              OMNI <span style={{ color: '#dc2626' }}>SOURCING</span>
-            </h1>
-            <p style={{ color: '#a1a1aa', fontSize: '0.85rem' }}>
-              Global Sourcing & Bangladesh Market Intelligence
-            </p>
-          </div>
+    <div style={{ minHeight: '100vh', background: '#09090b', color: '#f8fafc', padding: '1.25rem 1rem', position: 'relative', overflowX: 'hidden' }}>
+      {/* Ambient Floating Watermark Background */}
+      <div className="omni-watermark-layer" aria-hidden="true">
+        <div className="omni-watermark-radial-glow" />
+
+        {/* Primary Center Floating Watermark Logo */}
+        <div className="omni-watermark-float">
+          <img
+            src="/logo.png"
+            alt=""
+            className="omni-watermark-img"
+          />
         </div>
 
-        {/* Backend & AI Status Pill */}
-        <div
+        {/* Secondary Ambient Corner Floating Watermark */}
+        <div className="omni-watermark-float-secondary">
+          <img
+            src="/logo.png"
+            alt=""
+            className="omni-watermark-img-secondary"
+          />
+        </div>
+      </div>
+
+      {/* Main Content Layer */}
+      <div style={{ position: 'relative', zIndex: 10, maxWidth: '1180px', margin: '0 auto' }}>
+        {/* Sleek Minimalist Header */}
+        <header
           style={{
-            background: '#18181b',
-            border: '1px solid #27272a',
-            padding: '8px 14px',
-            borderRadius: '9999px',
-            fontSize: '0.8rem',
+            margin: '0 auto 1.5rem auto',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '1rem',
+            padding: '0.85rem 1.25rem',
+            borderRadius: '16px',
+            background: 'rgba(24, 24, 27, 0.7)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
           }}
         >
-          <span
+          {/* Brand identity */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
+            <div
+              style={{
+                background: '#ffffff',
+                padding: '6px 10px',
+                borderRadius: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                boxShadow: '0 2px 10px rgba(0, 0, 0, 0.25)',
+              }}
+            >
+              <img src="/logo.png" alt="OMNI" style={{ height: '34px', width: 'auto', objectFit: 'contain' }} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h1 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#ffffff', letterSpacing: '0.5px', margin: 0 }}>
+                  OMNI <span style={{ color: '#dc2626' }}>SOURCING</span>
+                </h1>
+                <span
+                  style={{
+                    fontSize: '0.65rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.5px',
+                    background: 'rgba(220, 38, 38, 0.15)',
+                    color: '#f87171',
+                    border: '1px solid rgba(220, 38, 38, 0.3)',
+                    padding: '2px 6px',
+                    borderRadius: '6px',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  PRO
+                </span>
+              </div>
+              <p style={{ color: '#a1a1aa', fontSize: '0.8rem', margin: 0, marginTop: '2px' }}>
+                China Sourcing & Bangladesh Landed Cost Intelligence
+              </p>
+            </div>
+          </div>
+
+          {/* Minimalist Live Status & Actions Strip */}
+          <div
             style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: health?.status === 'ok' ? '#22c55e' : '#ef4444',
-            }}
-          />
-          <span>API: {health?.status === 'ok' ? 'Connected' : 'Offline'}</span>
-          <span style={{ color: '#52525b' }}>|</span>
-          <span style={{ color: '#dc2626', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span>🤖</span> Dual AI Co-Pilot (Gemini + Claude)
-          </span>
-          <span style={{ color: '#52525b' }}>|</span>
-          <span
-            style={{ color: '#38bdf8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
-            onClick={() => {
-              if (liveRates?.cny_to_bdt) {
-                setGlobalRateRmbBdt(liveRates.cny_to_bdt.toFixed(2));
-                setManualRateRmb(liveRates.cny_to_bdt.toFixed(2));
-                showToast(`Applied Live Rate: 1 RMB = ৳${liveRates.cny_to_bdt} BDT`);
-              }
-            }}
-            title="Click to apply live rate"
-          >
-            <span>💱</span> 1 RMB = ৳{liveRates?.cny_to_bdt ? liveRates.cny_to_bdt.toFixed(2) : '20.00'}
-          </span>
-          <span style={{ color: '#52525b' }}>|</span>
-          <button
-            type="button"
-            onClick={() => setShowIntroVideo(true)}
-            style={{
-              background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.3) 0%, rgba(220, 38, 38, 0.1) 100%)',
-              border: '1px solid rgba(220, 38, 38, 0.5)',
-              color: '#fca5a5',
-              borderRadius: '9999px',
-              padding: '3px 10px',
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '4px'
+              gap: '8px',
+              flexWrap: 'wrap',
             }}
-            title="Watch Opening Cinematic Video"
           >
-            <span>🎬 Opening Video</span>
-          </button>
-        </div>
-      </header>
+            {/* Live System Indicator */}
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'rgba(9, 9, 11, 0.65)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                padding: '6px 12px',
+                borderRadius: '9999px',
+                fontSize: '0.78rem',
+                color: '#d4d4d8',
+              }}
+            >
+              <span
+                style={{
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  background: health?.status === 'ok' ? '#22c55e' : '#ef4444',
+                  boxShadow: health?.status === 'ok' ? '0 0 8px #22c55e' : 'none',
+                  animation: health?.status === 'ok' ? 'statusPulse 2s infinite' : 'none',
+                }}
+              />
+              <span style={{ fontWeight: 600 }}>{health?.status === 'ok' ? 'API Online' : 'API Offline'}</span>
+            </div>
 
-      {/* Main Container */}
-      <main style={{ maxWidth: '1100px', margin: '0 auto' }}>
+            {/* Dual AI Co-Pilot Badge */}
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'rgba(220, 38, 38, 0.1)',
+                border: '1px solid rgba(220, 38, 38, 0.25)',
+                padding: '6px 12px',
+                borderRadius: '9999px',
+                fontSize: '0.78rem',
+                color: '#f87171',
+                fontWeight: 600,
+              }}
+            >
+              <span>🤖</span>
+              <span>AI Co-Pilot (Gemini + Claude)</span>
+            </div>
+
+            {/* Live Exchange Rate Pill (Interactive) */}
+            <button
+              type="button"
+              onClick={() => {
+                if (liveRates?.cny_to_bdt) {
+                  setGlobalRateRmbBdt(liveRates.cny_to_bdt.toFixed(2));
+                  setManualRateRmb(liveRates.cny_to_bdt.toFixed(2));
+                  showToast(`Applied Live Rate: 1 RMB = ৳${liveRates.cny_to_bdt} BDT`);
+                } else {
+                  refreshRates();
+                  showToast('Refreshing live exchange rates...');
+                }
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'rgba(9, 9, 11, 0.65)',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+                padding: '6px 12px',
+                borderRadius: '9999px',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                color: '#38bdf8',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+              title="Click to apply latest live exchange rate"
+            >
+              <span>💱</span>
+              <span>1 RMB = ৳{liveRates?.cny_to_bdt ? liveRates.cny_to_bdt.toFixed(2) : '20.00'}</span>
+              <span style={{ fontSize: '0.68rem', color: '#94a3b8', background: 'rgba(56, 189, 248, 0.15)', padding: '1px 5px', borderRadius: '4px' }}>Live</span>
+            </button>
+
+            {/* Cinematic Opening Video Button */}
+            <button
+              type="button"
+              onClick={() => setShowIntroVideo(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'rgba(220, 38, 38, 0.15)',
+                border: '1px solid rgba(220, 38, 38, 0.4)',
+                color: '#fca5a5',
+                borderRadius: '9999px',
+                padding: '6px 12px',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+              title="Watch Opening Cinematic Video"
+            >
+              <span>🎬</span>
+              <span>Intro Video</span>
+            </button>
+          </div>
+        </header>
+
         {/* Error Alert Banner */}
         {errorMessage && (
           <div
@@ -649,121 +745,210 @@ export default function Home() {
           </div>
         )}
 
-        {/* Navigation Tabs */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => setSearchMode('text')}
+        {/* Modern Segmented Navigation Tabs */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.75rem' }}>
+          <div
             style={{
-              padding: '10px 18px',
-              borderRadius: '10px',
-              background: searchMode === 'text' ? '#dc2626' : '#18181b',
-              color: '#ffffff',
-              fontWeight: 700,
-              fontSize: '0.95rem',
-              border: '1px solid #27272a',
-            }}
-          >
-            🔍 Text Search
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSearchMode('image')}
-            style={{
-              padding: '10px 18px',
-              borderRadius: '10px',
-              background: searchMode === 'image' ? '#dc2626' : '#18181b',
-              color: '#ffffff',
-              fontWeight: 700,
-              fontSize: '0.95rem',
-              border: '1px solid #27272a',
-            }}
-          >
-            📷 Image Search (Gemini Vision)
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSearchMode('manual')}
-            style={{
-              padding: '10px 18px',
-              borderRadius: '10px',
-              background: searchMode === 'manual' ? '#dc2626' : '#18181b',
-              color: '#ffffff',
-              fontWeight: 700,
-              fontSize: '0.95rem',
-              border: '1px solid #27272a',
-            }}
-          >
-            🧮 Manual Landed Cost Calculator
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSearchMode('list')}
-            style={{
-              padding: '10px 18px',
-              borderRadius: '10px',
-              background: searchMode === 'list' ? '#dc2626' : '#18181b',
-              color: '#ffffff',
-              fontWeight: 700,
-              fontSize: '0.95rem',
-              border: '1px solid #27272a',
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px'
+              background: 'rgba(24, 24, 27, 0.75)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '14px',
+              padding: '4px',
+              gap: '4px',
+              flexWrap: 'wrap',
+              maxWidth: '100%',
             }}
           >
-            <span>📋 Product List Builder</span>
-            {productListItems.length > 0 && (
-              <span
-                style={{
-                  background: searchMode === 'list' ? '#ffffff' : '#dc2626',
-                  color: searchMode === 'list' ? '#dc2626' : '#ffffff',
-                  borderRadius: '9999px',
-                  padding: '2px 8px',
-                  fontSize: '0.75rem',
-                  fontWeight: 800
-                }}
-              >
-                {productListItems.length}
-              </span>
-            )}
-          </button>
+            <button
+              type="button"
+              onClick={() => setSearchMode('text')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '10px',
+                background: (searchMode === 'text' || searchMode === 'image') ? '#dc2626' : 'transparent',
+                color: (searchMode === 'text' || searchMode === 'image') ? '#ffffff' : '#a1a1aa',
+                fontWeight: (searchMode === 'text' || searchMode === 'image') ? 700 : 500,
+                fontSize: '0.88rem',
+                border: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: (searchMode === 'text' || searchMode === 'image') ? '0 2px 10px rgba(220, 38, 38, 0.35)' : 'none',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              }}
+            >
+              <span>🔍</span>
+              <span>Product Search</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setSearchMode('crm')}
-            style={{
-              padding: '10px 18px',
-              borderRadius: '10px',
-              background: searchMode === 'crm' ? '#dc2626' : '#18181b',
-              color: '#ffffff',
-              fontWeight: 700,
-              fontSize: '0.95rem',
-              border: '1px solid #27272a',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <span>👥 Customers & Messaging</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setSearchMode('manual')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '10px',
+                background: searchMode === 'manual' ? '#dc2626' : 'transparent',
+                color: searchMode === 'manual' ? '#ffffff' : '#a1a1aa',
+                fontWeight: searchMode === 'manual' ? 700 : 500,
+                fontSize: '0.88rem',
+                border: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: searchMode === 'manual' ? '0 2px 10px rgba(220, 38, 38, 0.35)' : 'none',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              }}
+            >
+              <span>🧮</span>
+              <span>Landed Cost Calculator</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSearchMode('list')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '10px',
+                background: searchMode === 'list' ? '#dc2626' : 'transparent',
+                color: searchMode === 'list' ? '#ffffff' : '#a1a1aa',
+                fontWeight: searchMode === 'list' ? 700 : 500,
+                fontSize: '0.88rem',
+                border: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: searchMode === 'list' ? '0 2px 10px rgba(220, 38, 38, 0.35)' : 'none',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              }}
+            >
+              <span>📋</span>
+              <span>Sourcing List</span>
+              {productListItems.length > 0 && (
+                <span
+                  style={{
+                    background: searchMode === 'list' ? '#ffffff' : '#dc2626',
+                    color: searchMode === 'list' ? '#dc2626' : '#ffffff',
+                    borderRadius: '9999px',
+                    padding: '1px 7px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                  }}
+                >
+                  {productListItems.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSearchMode('crm')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '10px',
+                background: searchMode === 'crm' ? '#dc2626' : 'transparent',
+                color: searchMode === 'crm' ? '#ffffff' : '#a1a1aa',
+                fontWeight: searchMode === 'crm' ? 700 : 500,
+                fontSize: '0.88rem',
+                border: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: searchMode === 'crm' ? '0 2px 10px rgba(220, 38, 38, 0.35)' : 'none',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              }}
+            >
+              <span>👥</span>
+              <span>Retail CRM & Pitch</span>
+            </button>
+          </div>
         </div>
 
-        {/* Section A: Text & Image Search Panel */}
+        {/* Section A: Streamlined Modern Search Panel */}
         {(searchMode === 'text' || searchMode === 'image') && (
           <section
             style={{
-              background: '#18181b',
+              background: 'rgba(24, 24, 27, 0.72)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
               borderRadius: '16px',
               padding: '1.5rem',
-              border: '1px solid #27272a',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
               marginBottom: '2rem',
-              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
+              boxShadow: '0 4px 24px -1px rgba(0, 0, 0, 0.45)',
             }}
           >
+            {/* Search Header with Sub-mode Switcher */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '1.25rem',
+                flexWrap: 'wrap',
+                gap: '0.75rem',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                paddingBottom: '0.75rem',
+              }}
+            >
+              <div>
+                <h2 style={{ fontSize: '1.15rem', color: '#ffffff', fontWeight: 800, margin: 0 }}>
+                  Global Sourcing Intelligence
+                </h2>
+                <p style={{ color: '#a1a1aa', fontSize: '0.8rem', margin: 0, marginTop: '2px' }}>
+                  Search wholesale suppliers across 1688, Taobao & compute Bangladesh landed costs
+                </p>
+              </div>
+
+              {/* Keyword vs Image Mode Pill Switcher */}
+              <div
+                style={{
+                  display: 'inline-flex',
+                  background: 'rgba(9, 9, 11, 0.65)',
+                  padding: '3px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setSearchMode('text')}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: '8px',
+                    background: searchMode === 'text' ? '#dc2626' : 'transparent',
+                    color: searchMode === 'text' ? '#ffffff' : '#a1a1aa',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  ✍️ Keyword Search
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchMode('image')}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: '8px',
+                    background: searchMode === 'image' ? '#dc2626' : 'transparent',
+                    color: searchMode === 'image' ? '#ffffff' : '#a1a1aa',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  📷 Photo Search (AI Vision)
+                </button>
+              </div>
+            </div>
+
             <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {searchMode === 'text' ? (
                 <>
@@ -772,15 +957,16 @@ export default function Home() {
                       type="text"
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
-                      placeholder="Search product (e.g., Smart Watch, Wireless Earbuds, Bag)..."
+                      placeholder="Search product (e.g., Smart Watch Ultra, TWS Earbuds, Leather Handbag)..."
                       style={{
                         flex: 1,
                         minWidth: '260px',
-                        background: '#09090b',
-                        border: '1px solid #3f3f46',
+                        background: 'rgba(9, 9, 11, 0.75)',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
                         borderRadius: '10px',
                         padding: '12px 16px',
-                        fontSize: '1rem',
+                        fontSize: '0.95rem',
+                        color: '#ffffff',
                         outline: 'none',
                       }}
                     />
@@ -788,16 +974,20 @@ export default function Home() {
                       type="submit"
                       disabled={loading}
                       style={{
-                        background: 'linear-gradient(135deg, #dc2626 0%, #990000 100%)',
+                        background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
                         color: '#ffffff',
                         fontWeight: 700,
-                        padding: '12px 28px',
+                        padding: '12px 24px',
                         borderRadius: '10px',
-                        fontSize: '1rem',
-                        boxShadow: '0 0 12px rgba(220, 38, 38, 0.4)',
+                        fontSize: '0.95rem',
+                        boxShadow: '0 2px 14px rgba(220, 38, 38, 0.35)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        cursor: 'pointer',
                       }}
                     >
-                      {loading ? 'Searching OMNI...' : '🔍 Search Product'}
+                      {loading ? 'Searching OMNI...' : '🔍 Search Products'}
                     </button>
                   </div>
 
@@ -832,12 +1022,12 @@ export default function Home() {
                           showToast("Searching for " + chip.val + "...");
                         }}
                         style={{
-                          background: '#09090b',
-                          border: '1px solid #3f3f46',
+                          background: 'rgba(9, 9, 11, 0.6)',
+                          border: '1px solid rgba(255, 255, 255, 0.08)',
                           borderRadius: '9999px',
                           padding: '4px 10px',
                           fontSize: '0.75rem',
-                          color: '#f8fafc',
+                          color: '#e2e8f0',
                           cursor: 'pointer',
                           transition: 'all 0.2s',
                         }}
@@ -852,12 +1042,13 @@ export default function Home() {
                   <div
                     onClick={() => fileInputRef.current?.click()}
                     style={{
-                      border: '2px dashed #dc2626',
+                      border: '2px dashed rgba(220, 38, 38, 0.6)',
                       borderRadius: '12px',
-                      padding: '1.5rem',
+                      padding: '1.75rem',
                       textAlign: 'center',
-                      background: '#09090b',
+                      background: 'rgba(9, 9, 11, 0.65)',
                       cursor: 'pointer',
+                      transition: 'border-color 0.2s',
                     }}
                   >
                     <input
@@ -868,23 +1059,26 @@ export default function Home() {
                       style={{ display: 'none' }}
                     />
                     {previewUrl ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem' }}>
                         <img
                           src={previewUrl}
                           alt="Product Upload Preview"
-                          style={{ maxHeight: '140px', borderRadius: '8px', objectFit: 'contain' }}
+                          style={{ maxHeight: '150px', borderRadius: '8px', objectFit: 'contain', border: '1px solid #27272a' }}
                         />
                         <span style={{ fontSize: '0.85rem', color: '#22c55e', fontWeight: 600 }}>
                           ✓ {selectedFile?.name} Selected
                         </span>
+                        <span style={{ fontSize: '0.75rem', color: '#a1a1aa' }}>
+                          Click to select a different photo
+                        </span>
                       </div>
                     ) : (
                       <div>
-                        <p style={{ fontSize: '1.1rem', fontWeight: 600, color: '#f8fafc', marginBottom: '4px' }}>
+                        <p style={{ fontSize: '1.05rem', fontWeight: 600, color: '#f8fafc', marginBottom: '4px' }}>
                           📷 Click or Drag Product Photo Here
                         </p>
                         <p style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>
-                          Supports camera photos, JPG, PNG, WEBP, HEIC
+                          Supports camera photos, JPG, PNG, WEBP, HEIC for Gemini Vision identification
                         </p>
                       </div>
                     )}
@@ -895,14 +1089,19 @@ export default function Home() {
                     disabled={loading || !selectedFile}
                     style={{
                       background: selectedFile
-                        ? 'linear-gradient(135deg, #dc2626 0%, #990000 100%)'
-                        : '#3f3f46',
+                        ? 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)'
+                        : '#27272a',
                       color: '#ffffff',
                       fontWeight: 700,
-                      padding: '12px 28px',
+                      padding: '12px 24px',
                       borderRadius: '10px',
-                      fontSize: '1rem',
-                      boxShadow: selectedFile ? '0 0 12px rgba(220, 38, 38, 0.4)' : 'none',
+                      fontSize: '0.95rem',
+                      boxShadow: selectedFile ? '0 2px 14px rgba(220, 38, 38, 0.35)' : 'none',
+                      cursor: selectedFile ? 'pointer' : 'not-allowed',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
                     }}
                   >
                     {loading ? 'Analyzing with Gemini Vision...' : '📷 Search by Image'}
@@ -910,152 +1109,212 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Smart Importer Quick Presets Bar */}
-              <div style={{ background: '#09090b', padding: '0.75rem', borderRadius: '10px', border: '1px solid #27272a', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 800 }}>⚡ Smart Importer Presets:</span>
-                <button
-                  type="button"
-                  onClick={() => applyPreset('sample')}
-                  style={{ background: '#27272a', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 600 }}
-                >
-                  🧪 Sample Order (5 pcs | Air)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyPreset('medium')}
-                  style={{ background: '#27272a', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 600 }}
-                >
-                  📦 Medium Batch (50 pcs | Air)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyPreset('bulk_sea')}
-                  style={{ background: '#27272a', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 600 }}
-                >
-                  🚢 Sea Container (500 pcs | Sea)
-                </button>
-              </div>
+              {/* Minimalist Quick Presets & Config Controls */}
+              <div
+                style={{
+                  background: 'rgba(9, 9, 11, 0.65)',
+                  padding: '0.85rem 1rem',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.85rem',
+                }}
+              >
+                {/* Quick Presets Bar */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.78rem', color: '#f87171', fontWeight: 700 }}>⚡ Presets:</span>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset('sample')}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      color: '#e2e8f0',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '6px',
+                      padding: '4px 10px',
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    🧪 Sample (5 pcs · Air)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset('medium')}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      color: '#e2e8f0',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '6px',
+                      padding: '4px 10px',
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    📦 Wholesale (50 pcs · Air)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset('bulk_sea')}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      color: '#e2e8f0',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '6px',
+                      padding: '4px 10px',
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    🚢 Sea Cargo (500 pcs · Sea)
+                  </button>
+                </div>
 
-              {/* Global Config Controls Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', paddingTop: '0.5rem' }}>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <label style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 700 }}>
-                      💱 1 RMB = (Tk / BDT)
+                {/* Parameters Bar (4 Columns) */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+                    gap: '0.85rem',
+                    paddingTop: '0.25rem',
+                    borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+                  }}
+                >
+                  {/* RMB Rate */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <label style={{ fontSize: '0.78rem', color: '#a1a1aa', fontWeight: 600 }}>
+                        💱 1 RMB = (Tk / BDT)
+                      </label>
+                      {liveRates?.cny_to_bdt && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGlobalRateRmbBdt(liveRates.cny_to_bdt.toFixed(2));
+                            showToast(`Applied Live Rate: ৳${liveRates.cny_to_bdt}`);
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#38bdf8',
+                            fontSize: '0.68rem',
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                            padding: 0,
+                          }}
+                        >
+                          ⚡ ৳{liveRates.cny_to_bdt.toFixed(2)}
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      step="0.05"
+                      value={globalRateRmbBdt}
+                      onChange={(e) => setGlobalRateRmbBdt(e.target.value)}
+                      placeholder="20.00"
+                      style={{
+                        width: '100%',
+                        background: 'rgba(9, 9, 11, 0.75)',
+                        border: '1px solid rgba(220, 38, 38, 0.4)',
+                        borderRadius: '8px',
+                        padding: '7px 10px',
+                        fontWeight: 700,
+                        color: '#ffffff',
+                        fontSize: '0.88rem',
+                      }}
+                    />
+                  </div>
+
+                  {/* Quantity */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', color: '#a1a1aa', marginBottom: '4px', fontWeight: 600 }}>
+                      Quantity (Units)
                     </label>
-                    {liveRates?.cny_to_bdt && (
+                    <input
+                      type="number"
+                      min="1"
+                      value={globalQuantity}
+                      onChange={(e) => setGlobalQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                      style={{
+                        width: '100%',
+                        background: 'rgba(9, 9, 11, 0.75)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '8px',
+                        padding: '7px 10px',
+                        color: '#ffffff',
+                        fontSize: '0.88rem',
+                      }}
+                    />
+                  </div>
+
+                  {/* Weight */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', color: '#a1a1aa', marginBottom: '4px', fontWeight: 600 }}>
+                      Weight per unit (kg)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.05"
+                      value={globalWeightKg}
+                      onChange={(e) => setGlobalWeightKg(e.target.value)}
+                      placeholder="0.35"
+                      style={{
+                        width: '100%',
+                        background: 'rgba(9, 9, 11, 0.75)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '8px',
+                        padding: '7px 10px',
+                        color: '#ffffff',
+                        fontSize: '0.88rem',
+                      }}
+                    />
+                  </div>
+
+                  {/* Shipping Method */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', color: '#a1a1aa', marginBottom: '4px', fontWeight: 600 }}>
+                      Shipping Cargo
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.4rem' }}>
                       <button
                         type="button"
-                        onClick={() => {
-                          setGlobalRateRmbBdt(liveRates.cny_to_bdt.toFixed(2));
-                          showToast(`⚡ Applied Live FX Rate: ৳${liveRates.cny_to_bdt}`);
-                        }}
+                        onClick={() => setGlobalShippingMethod('air')}
                         style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#38bdf8',
-                          fontSize: '0.7rem',
-                          cursor: 'pointer',
+                          flex: 1,
+                          padding: '7px',
+                          borderRadius: '8px',
+                          background: globalShippingMethod === 'air' ? '#dc2626' : 'rgba(255, 255, 255, 0.05)',
+                          color: '#ffffff',
                           fontWeight: 600,
-                          padding: 0,
+                          fontSize: '0.82rem',
+                          border: globalShippingMethod === 'air' ? '1px solid #dc2626' : '1px solid rgba(255, 255, 255, 0.08)',
                         }}
                       >
-                        ⚡ Live: ৳{liveRates.cny_to_bdt.toFixed(2)}
+                        ✈️ Air
                       </button>
-                    )}
+                      <button
+                        type="button"
+                        onClick={() => setGlobalShippingMethod('sea')}
+                        style={{
+                          flex: 1,
+                          padding: '7px',
+                          borderRadius: '8px',
+                          background: globalShippingMethod === 'sea' ? '#dc2626' : 'rgba(255, 255, 255, 0.05)',
+                          color: '#ffffff',
+                          fontWeight: 600,
+                          fontSize: '0.82rem',
+                          border: globalShippingMethod === 'sea' ? '1px solid #dc2626' : '1px solid rgba(255, 255, 255, 0.08)',
+                        }}
+                      >
+                        🚢 Sea
+                      </button>
+                    </div>
                   </div>
-                  <input
-                    type="number"
-                    step="0.05"
-                    value={globalRateRmbBdt}
-                    onChange={(e) => setGlobalRateRmbBdt(e.target.value)}
-                    placeholder="16.50"
-                    style={{
-                      width: '100%',
-                      background: '#09090b',
-                      border: '1px solid #dc2626',
-                      borderRadius: '8px',
-                      padding: '8px 12px',
-                      fontWeight: 700,
-                      color: '#ffffff',
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#a1a1aa', marginBottom: '4px' }}>
-                    Quantity (Units)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={globalQuantity}
-                    onChange={(e) => setGlobalQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                    style={{
-                      width: '100%',
-                      background: '#09090b',
-                      border: '1px solid #3f3f46',
-                      borderRadius: '8px',
-                      padding: '8px 12px',
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#a1a1aa', marginBottom: '4px' }}>
-                    Shipping Method
-                  </label>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button
-                      type="button"
-                      onClick={() => setGlobalShippingMethod('air')}
-                      style={{
-                        flex: 1,
-                        padding: '8px',
-                        borderRadius: '8px',
-                        background: globalShippingMethod === 'air' ? '#dc2626' : '#27272a',
-                        color: '#ffffff',
-                        fontWeight: 600,
-                        fontSize: '0.85rem',
-                      }}
-                    >
-                      ✈️ Air
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setGlobalShippingMethod('sea')}
-                      style={{
-                        flex: 1,
-                        padding: '8px',
-                        borderRadius: '8px',
-                        background: globalShippingMethod === 'sea' ? '#dc2626' : '#27272a',
-                        color: '#ffffff',
-                        fontWeight: 600,
-                        fontSize: '0.85rem',
-                      }}
-                    >
-                      🚢 Sea
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#a1a1aa', marginBottom: '4px' }}>
-                    Weight per unit (kg)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.05"
-                    value={globalWeightKg}
-                    onChange={(e) => setGlobalWeightKg(e.target.value)}
-                    style={{
-                      width: '100%',
-                      background: '#09090b',
-                      border: '1px solid #3f3f46',
-                      borderRadius: '8px',
-                      padding: '8px 12px',
-                    }}
-                  />
                 </div>
               </div>
             </form>
@@ -1066,21 +1325,23 @@ export default function Home() {
         {searchMode === 'manual' && (
           <section
             style={{
-              background: '#18181b',
+              background: 'rgba(24, 24, 27, 0.72)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
               borderRadius: '16px',
               padding: '1.5rem',
-              border: '1px solid #dc2626',
+              border: '1px solid rgba(220, 38, 38, 0.35)',
               marginBottom: '2rem',
-              boxShadow: '0 0 25px rgba(220, 38, 38, 0.2)',
+              boxShadow: '0 4px 24px -1px rgba(0, 0, 0, 0.45)',
             }}
           >
             {/* Header & Quick Action Buttons */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem', borderBottom: '1px solid #27272a', paddingBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255, 255, 255, 0.06)', paddingBottom: '1rem' }}>
               <div>
-                <h2 style={{ fontSize: '1.3rem', color: '#ffffff', fontWeight: 800, margin: 0 }}>
+                <h2 style={{ fontSize: '1.25rem', color: '#ffffff', fontWeight: 800, margin: 0 }}>
                   🧮 Standalone Landed Cost & Profit Calculator
                 </h2>
-                <p style={{ color: '#a1a1aa', fontSize: '0.85rem', marginTop: '2px', margin: 0 }}>
+                <p style={{ color: '#a1a1aa', fontSize: '0.82rem', marginTop: '2px', margin: 0 }}>
                   Smart BDT (৳) Landed Cost Breakdown | Default Rate: <strong>1 RMB = ৳20.00 BDT</strong> & Freight Rate: <strong>৳1.2 / gram (৳1,200/kg)</strong>
                 </p>
               </div>
@@ -1095,33 +1356,33 @@ export default function Home() {
                     border: 'none',
                     borderRadius: '8px',
                     padding: '8px 16px',
-                    fontSize: '0.85rem',
+                    fontSize: '0.82rem',
                     fontWeight: 700,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
-                    boxShadow: '0 0 10px rgba(22, 163, 74, 0.3)',
+                    boxShadow: '0 2px 10px rgba(22, 163, 74, 0.3)',
                   }}
                 >
-                  ➕ Add to Product List
+                  ➕ Add to Sourcing List
                 </button>
                 <button
                   type="button"
                   onClick={copyManualQuotation}
                   style={{
-                    background: 'linear-gradient(135deg, #dc2626 0%, #990000 100%)',
+                    background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
                     color: '#ffffff',
                     border: 'none',
                     borderRadius: '8px',
                     padding: '8px 16px',
-                    fontSize: '0.85rem',
+                    fontSize: '0.82rem',
                     fontWeight: 700,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
-                    boxShadow: '0 0 10px rgba(220, 38, 38, 0.3)',
+                    boxShadow: '0 2px 10px rgba(220, 38, 38, 0.3)',
                   }}
                 >
                   📋 Copy Quotation
@@ -1136,13 +1397,13 @@ export default function Home() {
                     border: 'none',
                     borderRadius: '8px',
                     padding: '8px 16px',
-                    fontSize: '0.85rem',
+                    fontSize: '0.82rem',
                     fontWeight: 700,
                     cursor: exportingPdf ? 'not-allowed' : 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
-                    boxShadow: '0 0 10px rgba(37, 99, 235, 0.3)',
+                    boxShadow: '0 2px 10px rgba(37, 99, 235, 0.3)',
                   }}
                 >
                   {exportingPdf ? '⏳ Generating PDF...' : '📄 Download PDF'}
@@ -1151,12 +1412,12 @@ export default function Home() {
                   type="button"
                   onClick={resetManualDefaults}
                   style={{
-                    background: '#27272a',
+                    background: 'rgba(255, 255, 255, 0.05)',
                     color: '#f8fafc',
-                    border: '1px solid #3f3f46',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
                     borderRadius: '8px',
                     padding: '8px 14px',
-                    fontSize: '0.85rem',
+                    fontSize: '0.82rem',
                     fontWeight: 600,
                     cursor: 'pointer',
                   }}
@@ -1167,7 +1428,7 @@ export default function Home() {
             </div>
 
             {/* Quick Speed Presets Bar for Freight & Exchange Rate */}
-            <div style={{ background: '#09090b', padding: '0.85rem', borderRadius: '12px', border: '1px solid #27272a', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ background: 'rgba(9, 9, 11, 0.65)', padding: '0.85rem 1rem', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {/* RMB Quick Switcher */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 800 }}>💱 RMB Exchange Rate:</span>
@@ -1432,7 +1693,7 @@ export default function Home() {
             </div>
 
             {/* Instant Calculated Output Breakdown Box */}
-            <div style={{ background: '#09090b', padding: '1.25rem', borderRadius: '12px', border: '1px solid #27272a' }}>
+            <div style={{ background: 'rgba(9, 9, 11, 0.75)', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
                 <h3 style={{ fontSize: '1.1rem', color: '#ffffff', fontWeight: 800, margin: 0 }}>
                   📊 Itemized Landed Cost & Profit Breakdown (Tk / BDT)
@@ -1651,15 +1912,17 @@ export default function Home() {
                     <div
                       key={idx}
                       style={{
-                        background: '#18181b',
+                        background: 'rgba(24, 24, 27, 0.72)',
+                        backdropFilter: 'blur(16px)',
+                        WebkitBackdropFilter: 'blur(16px)',
                         borderRadius: '16px',
-                        border: idx === 0 ? '2px solid #dc2626' : '1px solid #27272a',
+                        border: idx === 0 ? '1px solid rgba(220, 38, 38, 0.6)' : '1px solid rgba(255, 255, 255, 0.08)',
                         padding: '1.25rem',
                         display: 'flex',
                         flexDirection: 'column',
                         justifyContent: 'space-between',
                         position: 'relative',
-                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+                        boxShadow: idx === 0 ? '0 4px 24px rgba(220, 38, 38, 0.15)' : '0 4px 20px rgba(0, 0, 0, 0.4)',
                       }}
                     >
                       {idx === 0 && (
@@ -1764,7 +2027,7 @@ export default function Home() {
                         </div>
 
                         {/* Interactive User Parameter Override Controls Box */}
-                        <div style={{ background: '#09090b', padding: '0.85rem', borderRadius: '10px', border: '1px solid #dc2626', marginBottom: '1rem' }}>
+                        <div style={{ background: 'rgba(9, 9, 11, 0.65)', padding: '0.85rem', borderRadius: '10px', border: '1px solid rgba(220, 38, 38, 0.3)', marginBottom: '1rem' }}>
                           <p style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 800, marginBottom: '0.5rem' }}>
                             ⚡ User Live Parameter Overrides (Instant Recalculation)
                           </p>
@@ -1905,7 +2168,7 @@ export default function Home() {
 
                         {/* Dual AI Co-Pilot Strategic Commercial Insight Box (Gemini + Claude) */}
                         {res.claude_insight && (
-                          <div style={{ background: '#09090b', padding: '0.85rem', borderRadius: '10px', border: '1px solid #990000', marginBottom: '1rem' }}>
+                          <div style={{ background: 'rgba(9, 9, 11, 0.65)', padding: '0.85rem', borderRadius: '10px', border: '1px solid rgba(220, 38, 38, 0.35)', marginBottom: '1rem' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                               <span style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 800 }}>
                                 🤖 Dual AI Co-Pilot (Gemini + Claude) Strategy
@@ -2043,10 +2306,13 @@ export default function Home() {
                   <div
                     key={idx}
                     style={{
-                      background: '#18181b',
+                      background: 'rgba(24, 24, 27, 0.72)',
+                      backdropFilter: 'blur(16px)',
+                      WebkitBackdropFilter: 'blur(16px)',
                       borderRadius: '12px',
                       padding: '1rem',
-                      border: '1px solid #27272a',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)',
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
@@ -2098,7 +2364,7 @@ export default function Home() {
             />
           </section>
         )}
-      </main>
+      </div>
 
       {/* Floating Toast Notification */}
       {toastMessage && (
