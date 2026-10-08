@@ -199,18 +199,46 @@ export default function ProductListBuilder({
   }, []);
 
   useEffect(() => {
-    const listPayload = {
-      id: currentListId,
-      name: listName,
-      date: listDate,
-      notes: listNotes,
-      freightRate,
-      freightUnit,
-      includeWeightInTotal,
-      items
-    };
-    localStorage.setItem('omni_active_product_list', JSON.stringify(listPayload));
+    if (items.length > 0 || listName.trim()) {
+      const listPayload = {
+        id: currentListId,
+        name: listName,
+        date: listDate,
+        notes: listNotes,
+        freightRate,
+        freightUnit,
+        includeWeightInTotal,
+        items
+      };
+      localStorage.setItem('omni_active_product_list', JSON.stringify(listPayload));
+    } else {
+      localStorage.removeItem('omni_active_product_list');
+    }
   }, [listName, listDate, listNotes, items, currentListId, freightRate, freightUnit, includeWeightInTotal]);
+
+  // Reset / Refresh Product List Builder to clean default state
+  const resetToDefaultBuilder = () => {
+    onUpdateItems([]);
+    setListName('');
+    setListDate(getTodayDate());
+    setListNotes('');
+    setCurrentListId(null);
+    setNewTitle('');
+    setNewDetails('');
+    setNewPrice('');
+    setNewCurrency('RMB');
+    setNewWeightVal('');
+    setNewWeightUnit('gm');
+    setNewQuantity('');
+    setNewPaidAmount('');
+    setNewProductUrl('');
+    setNewImageUrl('');
+    try {
+      localStorage.removeItem('omni_active_product_list');
+    } catch (e) {
+      // ignore
+    }
+  };
 
   // Calculate Price in BDT
   const calculatePriceBdt = (priceVal: number, curr: string): number => {
@@ -639,13 +667,12 @@ export default function ProductListBuilder({
   const handleClearList = () => {
     if (items.length === 0) return;
     if (confirm('Are you sure you want to clear all products from this list?')) {
-      onUpdateItems([]);
-      setCurrentListId(null);
-      showToast('🧹 Product list cleared');
+      resetToDefaultBuilder();
+      showToast('🧹 Product list cleared and refreshed to default');
     }
   };
 
-  // Save to Backend API
+  // Save to Backend API & Refresh to default page
   const handleSaveToServer = async () => {
     if (items.length === 0) {
       showToast('⚠️ Cannot save an empty list! Add some products first.');
@@ -655,7 +682,7 @@ export default function ProductListBuilder({
     setSavingToServer(true);
     try {
       const payload = {
-        name: listName,
+        name: listName.trim() || 'My Sourcing Product List',
         date: listDate,
         notes: listNotes,
         freight_rate: Number(freightRate) || 1.2,
@@ -702,15 +729,16 @@ export default function ProductListBuilder({
       }
 
       if (res.ok) {
-        const data = await res.json();
-        setCurrentListId(data.id);
-        showToast('💾 List saved successfully to database!');
+        showToast('💾 List saved successfully to database! Refreshed to default Product List Builder.');
+        resetToDefaultBuilder();
       } else {
-        showToast('💾 Saved list locally to browser storage!');
+        showToast('💾 Saved list locally to browser storage! Refreshed to default Product List Builder.');
+        resetToDefaultBuilder();
       }
     } catch (err) {
       console.error('Server save error:', err);
-      showToast('💾 Saved list locally to browser storage!');
+      showToast('💾 Saved list locally to browser storage! Refreshed to default Product List Builder.');
+      resetToDefaultBuilder();
     } finally {
       setSavingToServer(false);
     }
@@ -886,7 +914,8 @@ export default function ProductListBuilder({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast('📊 CSV file downloaded with Weight Price & Payment tracking!');
+    showToast('📊 CSV file downloaded! Refreshed to default Product List Builder.');
+    resetToDefaultBuilder();
   };
 
   // Export A4 PDF Download
@@ -911,18 +940,20 @@ export default function ProductListBuilder({
 
       const opt = {
         margin: [8, 8, 8, 8] as [number, number, number, number],
-        filename: `${listName.toLowerCase().replace(/[^a-z0-9]/gi, '_')}_${listDate}.pdf`,
+        filename: `${(listName.trim() || 'sourcing_list').toLowerCase().replace(/[^a-z0-9]/gi, '_')}_${listDate}.pdf`,
         image: { type: 'jpeg' as const, quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, logging: false },
         jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
       };
 
       await html2pdf().set(opt).from(element).save();
-      showToast('📄 A4 PDF downloaded successfully!');
+      showToast('📄 A4 PDF downloaded successfully! Refreshed to default Product List Builder.');
+      resetToDefaultBuilder();
     } catch (err) {
       console.error('PDF export error:', err);
       showToast('🖨️ Opening browser A4 print PDF renderer...');
       window.print();
+      resetToDefaultBuilder();
     } finally {
       setDownloadingPdf(false);
     }
@@ -930,6 +961,7 @@ export default function ProductListBuilder({
 
   const handleNativePrint = () => {
     window.print();
+    resetToDefaultBuilder();
   };
 
   // Common Input Base Style Object
