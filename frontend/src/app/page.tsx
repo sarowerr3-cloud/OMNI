@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import ProductListBuilder, { ProductItem } from '@/components/ProductListBuilder';
 import CustomerManager from '@/components/CustomerManager';
+import IntroVideoModal from '@/components/IntroVideoModal';
+import VideoLoadingOverlay from '@/components/VideoLoadingOverlay';
 import { SourcedProductResult, LocalMarketBenchmark, SearchResults } from '@/lib/types';
 import { formatMoney } from '@/lib/formatters';
 import { useSearchHistory } from '@/hooks/useSearchHistory';
@@ -18,6 +20,7 @@ export default function Home() {
   const [searchMode, setSearchMode] = useState<'text' | 'image' | 'manual' | 'list' | 'crm'>('text');
   const [productListItems, setProductListItems] = useState<ProductItem[]>([]);
   const [customerManagerProduct, setCustomerManagerProduct] = useState<ProductItem | null>(null);
+  const [showIntroVideo, setShowIntroVideo] = useState<boolean>(false);
   
   // Search history state management
   const { history: searchHistory, addSearch, removeSearch, clearHistory } = useSearchHistory();
@@ -85,6 +88,14 @@ export default function Home() {
       setToastMessage(null);
     }, 3500);
   };
+
+  // Launch Opening Intro Video on first visit
+  useEffect(() => {
+    const disabled = typeof window !== 'undefined' ? localStorage.getItem('omni_disable_intro_video') : 'false';
+    if (disabled !== 'true') {
+      setShowIntroVideo(true);
+    }
+  }, []);
 
   const applyPreset = (type: 'sample' | 'medium' | 'bulk_sea') => {
     if (type === 'sample') {
@@ -595,6 +606,27 @@ export default function Home() {
           >
             <span>💱</span> 1 RMB = ৳{liveRates?.cny_to_bdt ? liveRates.cny_to_bdt.toFixed(2) : '20.00'}
           </span>
+          <span style={{ color: '#52525b' }}>|</span>
+          <button
+            type="button"
+            onClick={() => setShowIntroVideo(true)}
+            style={{
+              background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.3) 0%, rgba(220, 38, 38, 0.1) 100%)',
+              border: '1px solid rgba(220, 38, 38, 0.5)',
+              color: '#fca5a5',
+              borderRadius: '9999px',
+              padding: '3px 10px',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+            title="Watch Opening Cinematic Video"
+          >
+            <span>🎬 Opening Video</span>
+          </button>
         </div>
       </header>
 
@@ -2101,6 +2133,23 @@ export default function Home() {
           quantity={activeNegotiationProduct.qty}
           onClose={() => setActiveNegotiationProduct(null)}
           showToast={showToast}
+        />
+      )}
+
+      {/* Cinematic Opening Video Modal */}
+      <IntroVideoModal
+        isOpen={showIntroVideo}
+        onClose={() => setShowIntroVideo(false)}
+        videoSrc="/intro.mp4"
+      />
+
+      {/* Cinematic Video Loading Screen during searches */}
+      {loading && (
+        <VideoLoadingOverlay
+          mode={searchMode === 'image' ? 'image' : 'text'}
+          query={query}
+          onCancel={() => setLoading(false)}
+          videoSrc="/intro.mp4"
         />
       )}
     </div>
