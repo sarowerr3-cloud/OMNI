@@ -51,6 +51,11 @@ export interface ProductItem {
   paid_amount?: number;
   due_amount?: number;
   payment_status?: 'paid' | 'partial' | 'unpaid';
+  // Weight Price / Freight fields
+  weight_price_bdt?: number;
+  line_weight_price_bdt?: number;
+  combined_unit_price_bdt?: number;
+  combined_line_total_bdt?: number;
 }
 
 export interface SavedProductList {
@@ -64,6 +69,10 @@ export interface SavedProductList {
   total_quantity: number;
   total_paid_bdt?: number;
   total_due_bdt?: number;
+  total_weight_price_bdt?: number;
+  grand_total_bdt?: number;
+  freight_rate?: number;
+  freight_unit?: string;
   payment_status?: string;
   notes?: string;
   created_at?: string;
@@ -77,6 +86,8 @@ interface ProductListBuilderProps {
   showToast: (msg: string) => void;
   defaultRmbRate?: string;
   defaultUsdRate?: string;
+  defaultFreightRate?: string;
+  defaultFreightUnit?: 'per_gm' | 'per_kg';
   onPitchToCustomers?: (item: ProductItem) => void;
 }
 
@@ -87,6 +98,8 @@ export default function ProductListBuilder({
   showToast,
   defaultRmbRate,
   defaultUsdRate,
+  defaultFreightRate,
+  defaultFreightUnit,
   onPitchToCustomers
 }: ProductListBuilderProps) {
   // Top Header Metadata
@@ -105,7 +118,12 @@ export default function ProductListBuilder({
   const [rmbRate, setRmbRate] = useState<string>(defaultRmbRate || '20.00');
   const [usdRate, setUsdRate] = useState<string>(defaultUsdRate || '120.00');
 
-  // Keep rmbRate and usdRate in sync if defaults change
+  // Freight Rate & Weight Price Configuration (Default: 1.2 Tk/gm = 1,200 Tk/kg)
+  const [freightRate, setFreightRate] = useState<string>(defaultFreightRate || '1.2');
+  const [freightUnit, setFreightUnit] = useState<'per_gm' | 'per_kg'>(defaultFreightUnit || 'per_gm');
+  const [includeWeightInTotal, setIncludeWeightInTotal] = useState<boolean>(true);
+
+  // Keep rates in sync if defaults change
   useEffect(() => {
     if (defaultRmbRate && Number(defaultRmbRate) > 0) {
       setRmbRate(defaultRmbRate);
@@ -117,6 +135,18 @@ export default function ProductListBuilder({
       setUsdRate(defaultUsdRate);
     }
   }, [defaultUsdRate]);
+
+  useEffect(() => {
+    if (defaultFreightRate && Number(defaultFreightRate) > 0) {
+      setFreightRate(defaultFreightRate);
+    }
+  }, [defaultFreightRate]);
+
+  useEffect(() => {
+    if (defaultFreightUnit) {
+      setFreightUnit(defaultFreightUnit);
+    }
+  }, [defaultFreightUnit]);
   
   const [newWeightVal, setNewWeightVal] = useState<string>('0.35');
   const [newWeightUnit, setNewWeightUnit] = useState<'kg' | 'gm'>('kg');
@@ -158,6 +188,9 @@ export default function ProductListBuilder({
           if (parsed.date) setListDate(parsed.date);
           if (parsed.notes) setListNotes(parsed.notes);
           if (parsed.id) setCurrentListId(parsed.id);
+          if (parsed.freightRate) setFreightRate(parsed.freightRate);
+          if (parsed.freightUnit) setFreightUnit(parsed.freightUnit);
+          if (typeof parsed.includeWeightInTotal === 'boolean') setIncludeWeightInTotal(parsed.includeWeightInTotal);
         }
       } catch (e) {
         console.error('Failed to load local cached product list:', e);
@@ -171,10 +204,13 @@ export default function ProductListBuilder({
       name: listName,
       date: listDate,
       notes: listNotes,
+      freightRate,
+      freightUnit,
+      includeWeightInTotal,
       items
     };
     localStorage.setItem('omni_active_product_list', JSON.stringify(listPayload));
-  }, [listName, listDate, listNotes, items, currentListId]);
+  }, [listName, listDate, listNotes, items, currentListId, freightRate, freightUnit, includeWeightInTotal]);
 
   // Calculate Price in BDT
   const calculatePriceBdt = (priceVal: number, curr: string): number => {
@@ -191,6 +227,18 @@ export default function ProductListBuilder({
     return unit === 'gm' ? val / 1000.0 : val;
   };
 
+  // Weight & Freight Price Math (Defaults to 1.2 Tk/gm = 1,200 Tk/kg)
+  const calculateUnitWeightPriceBdt = (weightKg: number, rateStr: string, unit: 'per_gm' | 'per_kg'): number => {
+    const rate = Number(rateStr) || 0;
+    if (rate <= 0 || weightKg <= 0) return 0;
+    if (unit === 'per_gm') {
+      const weightGm = weightKg * 1000.0;
+      return weightGm * rate;
+    } else {
+      return weightKg * rate;
+    }
+  };
+
   // Sequential Product Add Handler
   const handleAddProduct = (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,7 +252,14 @@ export default function ProductListBuilder({
     const weightNum = Math.max(0, Number(newWeightVal) || 0);
     const weightKg = calculateWeightKg(weightNum, newWeightUnit);
     const qty = Math.max(1, newQuantity || 1);
-    const lineTotalBdt = priceBdt * qty;
+
+    // Dynamic Weight Price Calculation
+    const unitWeightPrice = calculateUnitWeightPriceBdt(weightKg, freightRate, freightUnit);
+    const lineWeightPrice = unitWeightPrice * qty;
+    const lineProductTotal = priceBdt * qty;
+    const combinedLineTotal = lineProductTotal + lineWeightPrice;
+
+    const lineTotalBdt = includeWeightInTotal ? combinedLineTotal : lineProductTotal;
     const paidNum = Math.max(0, Number(newPaidAmount) || 0);
     const dueNum = Math.max(0, lineTotalBdt - paidNum);
     const itemStatus: 'paid' | 'partial' | 'unpaid' =
@@ -219,6 +274,10 @@ export default function ProductListBuilder({
       price_bdt: priceBdt,
       weight_kg: Number(weightKg.toFixed(3)),
       quantity: qty,
+      weight_price_bdt: Number(unitWeightPrice.toFixed(2)),
+      line_weight_price_bdt: Number(lineWeightPrice.toFixed(2)),
+      combined_unit_price_bdt: Number((priceBdt + unitWeightPrice).toFixed(2)),
+      combined_line_total_bdt: Number(combinedLineTotal.toFixed(2)),
       product_url: newProductUrl.trim() || undefined,
       image_url: newImageUrl.trim() || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?auto=format&fit=crop&w=400&q=80',
       platform: newPlatform,
@@ -228,7 +287,7 @@ export default function ProductListBuilder({
     };
 
     onUpdateItems([...items, newItem]);
-    showToast(`✅ Added "${newItem.title}" to product list!`);
+    showToast(`✅ Added "${newItem.title}" (Weight Price: ৳${lineWeightPrice.toFixed(0)}) to product list!`);
 
     // Reset form
     setNewTitle('');
@@ -241,8 +300,32 @@ export default function ProductListBuilder({
   };
 
   // Helper calculations for items
-  const getItemLineTotal = (item: ProductItem): number => {
+  const getItemProductLineTotal = (item: ProductItem): number => {
     return (item.price_bdt || 0) * (item.quantity || 1);
+  };
+
+  const getItemUnitWeightPrice = (item: ProductItem): number => {
+    if (typeof item.weight_price_bdt === 'number' && item.weight_price_bdt > 0) {
+      return item.weight_price_bdt;
+    }
+    return calculateUnitWeightPriceBdt(item.weight_kg || 0, freightRate, freightUnit);
+  };
+
+  const getItemLineWeightPrice = (item: ProductItem): number => {
+    if (typeof item.line_weight_price_bdt === 'number' && item.line_weight_price_bdt > 0) {
+      return item.line_weight_price_bdt;
+    }
+    return getItemUnitWeightPrice(item) * (item.quantity || 1);
+  };
+
+  const getItemCombinedLineTotal = (item: ProductItem): number => {
+    const productLine = getItemProductLineTotal(item);
+    const weightLine = getItemLineWeightPrice(item);
+    return includeWeightInTotal ? (productLine + weightLine) : productLine;
+  };
+
+  const getItemLineTotal = (item: ProductItem): number => {
+    return getItemCombinedLineTotal(item);
   };
 
   const getItemPaid = (item: ProductItem): number => {
@@ -417,7 +500,7 @@ export default function ProductListBuilder({
 
     onUpdateItems(updated);
     const newTotalPaid = updated.reduce((sum, it) => sum + getItemPaid(it), 0);
-    const newTotalDue = Math.max(0, totalPriceBdt - newTotalPaid);
+    const newTotalDue = Math.max(0, effectiveTotalOrderBdt - newTotalPaid);
     setShowDepositModal(false);
     showToast(`💰 Applied ৳${deposit.toLocaleString()} deposit! Remaining balance: ৳${newTotalDue.toLocaleString()}`);
   };
@@ -462,13 +545,19 @@ export default function ProductListBuilder({
     const qty = Math.max(1, newQty);
     const updated = items.map((item) => {
       if (item.id === id) {
-        const lineTotal = item.price_bdt * qty;
+        const lineProduct = item.price_bdt * qty;
+        const unitWeightPrice = getItemUnitWeightPrice(item);
+        const lineWeight = unitWeightPrice * qty;
+        const combined = lineProduct + lineWeight;
+        const lineTotal = includeWeightInTotal ? combined : lineProduct;
         const paid = Math.min(lineTotal, getItemPaid(item));
         const due = Math.max(0, lineTotal - paid);
         const status: 'paid' | 'partial' | 'unpaid' = due === 0 && paid > 0 ? 'paid' : (paid > 0 ? 'partial' : 'unpaid');
         return {
           ...item,
           quantity: qty,
+          line_weight_price_bdt: Number(lineWeight.toFixed(2)),
+          combined_line_total_bdt: Number(combined.toFixed(2)),
           paid_amount: paid,
           due_amount: due,
           payment_status: status
@@ -492,7 +581,14 @@ export default function ProductListBuilder({
         const editedCurr = editItemState.currency ?? item.currency;
         const editedPriceBdt = calculatePriceBdt(editedPrice, editedCurr);
         const editedQty = Math.max(1, editItemState.quantity ?? item.quantity);
-        const lineTotal = editedPriceBdt * editedQty;
+        const editedWeightKg = Math.max(0, editItemState.weight_kg ?? item.weight_kg);
+
+        const unitWeightPrice = calculateUnitWeightPriceBdt(editedWeightKg, freightRate, freightUnit);
+        const lineWeight = unitWeightPrice * editedQty;
+        const lineProduct = editedPriceBdt * editedQty;
+        const combined = lineProduct + lineWeight;
+        const lineTotal = includeWeightInTotal ? combined : lineProduct;
+
         const paid = Math.min(lineTotal, editItemState.paid_amount ?? getItemPaid(item));
         const due = Math.max(0, lineTotal - paid);
         const status: 'paid' | 'partial' | 'unpaid' = due === 0 && paid > 0 ? 'paid' : (paid > 0 ? 'partial' : 'unpaid');
@@ -502,8 +598,12 @@ export default function ProductListBuilder({
           price: editedPrice,
           currency: editedCurr,
           price_bdt: editedPriceBdt,
-          weight_kg: Math.max(0, editItemState.weight_kg ?? item.weight_kg),
+          weight_kg: editedWeightKg,
           quantity: editedQty,
+          weight_price_bdt: Number(unitWeightPrice.toFixed(2)),
+          line_weight_price_bdt: Number(lineWeight.toFixed(2)),
+          combined_unit_price_bdt: Number((editedPriceBdt + unitWeightPrice).toFixed(2)),
+          combined_line_total_bdt: Number(combined.toFixed(2)),
           paid_amount: paid,
           due_amount: due,
           payment_status: status
@@ -516,16 +616,20 @@ export default function ProductListBuilder({
     showToast('✏️ Product details updated!');
   };
 
-  // Total Calculations
-  const totalPriceBdt = items.reduce((sum, item) => sum + getItemLineTotal(item), 0);
-  const totalPaidBdt = items.reduce((sum, item) => sum + getItemPaid(item), 0);
-  const totalDueBdt = Math.max(0, totalPriceBdt - totalPaidBdt);
+  // Total Calculations (Itemized Product Value + Weight Freight Price)
+  const totalProductPriceBdt = items.reduce((sum, item) => sum + getItemProductLineTotal(item), 0);
   const totalWeightKg = items.reduce((sum, item) => sum + (item.weight_kg || 0) * (item.quantity || 1), 0);
+  const totalWeightPriceBdt = items.reduce((sum, item) => sum + getItemLineWeightPrice(item), 0);
+  const grandTotalBdt = totalProductPriceBdt + totalWeightPriceBdt;
+  const totalPriceBdt = totalProductPriceBdt; // pure product price for backend compatibility
+  const effectiveTotalOrderBdt = includeWeightInTotal ? grandTotalBdt : totalProductPriceBdt;
+  const totalPaidBdt = items.reduce((sum, item) => sum + getItemPaid(item), 0);
+  const totalDueBdt = Math.max(0, effectiveTotalOrderBdt - totalPaidBdt);
   const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 1), 0);
   const totalItemsCount = items.length;
 
-  // Estimated Landed Cost (Total Product Price + Air Freight @ 1200 Tk/kg + 20% Duty/Fees)
-  const totalFreightBdt = totalWeightKg * 1200;
+  // Estimated Landed Cost (Total Product Price + Air Freight + 20% Duty/Fees)
+  const totalFreightBdt = totalWeightPriceBdt > 0 ? totalWeightPriceBdt : totalWeightKg * 1200;
   const estimatedLandedTotalBdt = totalPriceBdt + totalFreightBdt + totalPriceBdt * 0.20;
 
   // Clear List
@@ -551,18 +655,32 @@ export default function ProductListBuilder({
         name: listName,
         date: listDate,
         notes: listNotes,
-        items: items.map(it => ({
-          ...it,
-          paid_amount: getItemPaid(it),
-          paid_amount_bdt: getItemPaid(it),
-          due_amount: getItemDue(it),
-          due_amount_bdt: getItemDue(it),
-          payment_status: getItemStatus(it)
-        })),
-        total_price_bdt: totalPriceBdt,
+        freight_rate: Number(freightRate) || 1.2,
+        freight_unit: freightUnit,
+        items: items.map(it => {
+          const unitWeightPrice = getItemUnitWeightPrice(it);
+          const lineWeightPrice = getItemLineWeightPrice(it);
+          const lineProductPrice = getItemProductLineTotal(it);
+          const combinedLineTotal = lineProductPrice + lineWeightPrice;
+          return {
+            ...it,
+            weight_price_bdt: unitWeightPrice,
+            line_weight_price_bdt: lineWeightPrice,
+            combined_unit_price_bdt: it.price_bdt + unitWeightPrice,
+            combined_line_total_bdt: combinedLineTotal,
+            paid_amount: getItemPaid(it),
+            paid_amount_bdt: getItemPaid(it),
+            due_amount: getItemDue(it),
+            due_amount_bdt: getItemDue(it),
+            payment_status: getItemStatus(it)
+          };
+        }),
+        total_price_bdt: totalProductPriceBdt,
+        total_weight_price_bdt: totalWeightPriceBdt,
+        grand_total_bdt: grandTotalBdt,
         total_paid_bdt: totalPaidBdt,
         total_due_bdt: totalDueBdt,
-        payment_status: totalDueBdt === 0 && totalPriceBdt > 0 ? 'paid' : (totalPaidBdt > 0 ? 'partial' : 'unpaid')
+        payment_status: totalDueBdt === 0 && effectiveTotalOrderBdt > 0 ? 'paid' : (totalPaidBdt > 0 ? 'partial' : 'unpaid')
       };
 
       let res;
@@ -618,10 +736,20 @@ export default function ProductListBuilder({
     setListName(saved.name);
     setListDate(saved.date);
     setListNotes(saved.notes || '');
+    if (saved.freight_rate) setFreightRate(String(saved.freight_rate));
+    if (saved.freight_unit && (saved.freight_unit === 'per_gm' || saved.freight_unit === 'per_kg')) {
+      setFreightUnit(saved.freight_unit as any);
+    }
 
     const loadedItems: ProductItem[] = (saved.items || []).map((it) => {
       const paid = Number(it.paid_amount ?? (it as any).paid_amount_bdt) || 0;
-      const lineTotal = (it.price_bdt || 0) * (it.quantity || 1);
+      const lineProduct = (it.price_bdt || 0) * (it.quantity || 1);
+      const unitWeightPrice = typeof it.weight_price_bdt === 'number' && it.weight_price_bdt > 0
+        ? it.weight_price_bdt
+        : calculateUnitWeightPriceBdt(it.weight_kg || 0, String(saved.freight_rate || freightRate), (saved.freight_unit as any) || freightUnit);
+      const lineWeightPrice = unitWeightPrice * (it.quantity || 1);
+      const combinedLineTotal = lineProduct + lineWeightPrice;
+      const lineTotal = combinedLineTotal;
       const due = typeof it.due_amount === 'number' 
         ? it.due_amount 
         : (typeof (it as any).due_amount_bdt === 'number' 
@@ -630,6 +758,10 @@ export default function ProductListBuilder({
       const status = (it.payment_status as any) || (due === 0 && paid > 0 ? 'paid' : (paid > 0 ? 'partial' : 'unpaid'));
       return {
         ...it,
+        weight_price_bdt: unitWeightPrice,
+        line_weight_price_bdt: lineWeightPrice,
+        combined_unit_price_bdt: (it.price_bdt || 0) + unitWeightPrice,
+        combined_line_total_bdt: combinedLineTotal,
         paid_amount: paid,
         due_amount: due,
         payment_status: status
@@ -638,7 +770,7 @@ export default function ProductListBuilder({
 
     onUpdateItems(loadedItems);
     setShowSavedModal(false);
-    showToast(`📂 Loaded list: "${saved.name}"`);
+    showToast(`📂 Loaded list: "${saved.name}" with weight prices`);
   };
 
   // Delete Saved List
@@ -654,7 +786,7 @@ export default function ProductListBuilder({
     }
   };
 
-  // Share Summary Text with Paid & Due tracking
+  // Share Summary Text with Weight Price, Paid & Due tracking
   const handleShareSummary = () => {
     if (items.length === 0) {
       showToast('⚠️ Add items to list before sharing!');
@@ -662,30 +794,36 @@ export default function ProductListBuilder({
     }
 
     const lines = [
-      `📋 PRODUCT SOURCING & CUSTOMER PAYMENT SUMMARY: ${listName}`,
+      `📋 PRODUCT SOURCING, WEIGHT PRICE & PAYMENT SUMMARY: ${listName}`,
       `📅 Date: ${listDate}`,
+      `✈️ Freight Rate: ৳${freightRate}/${freightUnit === 'per_gm' ? 'gm' : 'kg'}`,
       `----------------------------------------`,
       ...items.map((it, i) => {
-        const lineTotal = getItemLineTotal(it);
+        const lineProduct = getItemProductLineTotal(it);
+        const lineWeight = getItemLineWeightPrice(it);
+        const unitWeight = getItemUnitWeightPrice(it);
+        const combined = lineProduct + lineWeight;
         const paid = getItemPaid(it);
         const due = getItemDue(it);
         const status = getItemStatus(it).toUpperCase();
-        return `${i + 1}. ${it.title} (${it.quantity} pcs)\n   Line Total: ৳${lineTotal.toLocaleString()} | Paid: ৳${paid.toLocaleString()} | Due: ৳${due.toLocaleString()} [${status}]\n   Link: ${it.product_url || 'N/A'}`;
+        return `${i + 1}. ${it.title} (${it.quantity} pcs)\n   📦 Product: ৳${lineProduct.toLocaleString()} (৳${it.price_bdt}/u)\n   ⚖️ Weight Price: ৳${lineWeight.toLocaleString()} (৳${unitWeight.toFixed(0)}/u, ${(it.weight_kg * it.quantity).toFixed(3)}kg)\n   💰 Combined Line Total: ৳${combined.toLocaleString()} | Paid: ৳${paid.toLocaleString()} | Due: ৳${due.toLocaleString()} [${status}]\n   Link: ${it.product_url || 'N/A'}`;
       }),
       `----------------------------------------`,
       `📦 Total Items: ${totalItemsCount} (${totalQuantity} pcs)`,
       `⚖️ TOTAL WEIGHT: ${totalWeightKg.toFixed(3)} kg`,
-      `💰 TOTAL ORDER: ৳${totalPriceBdt.toLocaleString()} BDT`,
+      `✈️ TOTAL WEIGHT FREIGHT PRICE: ৳${totalWeightPriceBdt.toLocaleString()} BDT`,
+      `💵 TOTAL FACTORY PRODUCT VALUE: ৳${totalProductPriceBdt.toLocaleString()} BDT`,
+      `💰 COMBINED GRAND TOTAL: ৳${grandTotalBdt.toLocaleString()} BDT`,
       `✅ TOTAL CUSTOMER PAID: ৳${totalPaidBdt.toLocaleString()} BDT`,
       `⚠️ OUTSTANDING CUSTOMER DUE: ৳${totalDueBdt.toLocaleString()} BDT`,
       listNotes ? `📝 Notes: ${listNotes}` : ''
     ];
 
     navigator.clipboard.writeText(lines.filter(Boolean).join('\n'));
-    showToast('📋 Sourcing & payment summary copied to clipboard!');
+    showToast('📋 Sourcing, weight price & payment summary copied to clipboard!');
   };
 
-  // Export CSV with Paid & Due tracking
+  // Export CSV with Weight Price, Paid & Due tracking
   const handleExportCsv = () => {
     if (items.length === 0) {
       showToast('⚠️ No items to export!');
@@ -695,19 +833,25 @@ export default function ProductListBuilder({
       '#', 
       'Product Title', 
       'Platform', 
-      'Unit Price (BDT)', 
+      'Unit Product Price (BDT)', 
       'Quantity', 
-      'Line Total (BDT)', 
+      'Line Product Total (BDT)', 
+      'Unit Weight (kg)', 
+      'Line Weight (kg)', 
+      'Unit Weight Price (BDT)', 
+      'Line Weight Price (BDT)', 
+      'Combined Line Total (BDT)', 
       'Paid Amount (BDT)', 
       'Due Amount (BDT)', 
       'Payment Status', 
-      'Unit Weight (kg)', 
-      'Line Weight (kg)', 
       'Product Link', 
       'Details'
     ];
     const rows = items.map((it, idx) => {
-      const lineTotal = getItemLineTotal(it);
+      const lineProduct = getItemProductLineTotal(it);
+      const unitWeightPrice = getItemUnitWeightPrice(it);
+      const lineWeightPrice = getItemLineWeightPrice(it);
+      const combined = lineProduct + lineWeightPrice;
       const paid = getItemPaid(it);
       const due = getItemDue(it);
       const status = getItemStatus(it);
@@ -717,12 +861,15 @@ export default function ProductListBuilder({
         `"${it.platform || 'N/A'}"`,
         it.price_bdt,
         it.quantity,
-        lineTotal,
+        lineProduct,
+        it.weight_kg,
+        (it.weight_kg * it.quantity).toFixed(3),
+        unitWeightPrice.toFixed(2),
+        lineWeightPrice.toFixed(2),
+        combined,
         paid,
         due,
         `"${status.toUpperCase()}"`,
-        it.weight_kg,
-        (it.weight_kg * it.quantity).toFixed(3),
         `"${it.product_url || ''}"`,
         `"${(it.details || '').replace(/"/g, '""')}"`
       ];
@@ -736,7 +883,7 @@ export default function ProductListBuilder({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast('📊 CSV file downloaded with Paid & Due tracking!');
+    showToast('📊 CSV file downloaded with Weight Price & Payment tracking!');
   };
 
   // Export A4 PDF Download
@@ -971,6 +1118,82 @@ export default function ProductListBuilder({
               />
             </div>
 
+            {/* Cargo Freight Rate (Weight Price) */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>
+                  <Scale style={{ width: '14px', height: '14px', color: '#fbbf24' }} />
+                  Cargo Freight Rate <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <span style={{ fontSize: '0.7rem', color: '#fbbf24', fontWeight: 700 }}>
+                  {freightUnit === 'per_gm' ? `≈ ৳${((Number(freightRate) || 0) * 1000).toLocaleString()}/kg` : `≈ ৳${((Number(freightRate) || 0) / 1000).toFixed(2)}/gm`}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={freightRate}
+                  onChange={(e) => setFreightRate(e.target.value)}
+                  style={{ ...inputStyle, flex: 1, fontWeight: 700, color: '#fbbf24' }}
+                />
+                <select
+                  value={freightUnit}
+                  onChange={(e) => setFreightUnit(e.target.value as any)}
+                  style={{ ...inputStyle, width: '105px', backgroundColor: '#18181b', fontWeight: 700 }}
+                >
+                  <option value="per_gm">Tk / gm</option>
+                  <option value="per_kg">Tk / kg</option>
+                </select>
+              </div>
+
+              {/* Quick Rate Presets */}
+              <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => { setFreightRate('1.2'); setFreightUnit('per_gm'); }}
+                  style={{ padding: '2px 6px', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: freightRate === '1.2' && freightUnit === 'per_gm' ? 'rgba(245, 158, 11, 0.2)' : '#27272a', border: freightRate === '1.2' && freightUnit === 'per_gm' ? '1px solid #fbbf24' : '1px solid #3f3f46', color: '#fbbf24', cursor: 'pointer', fontWeight: 700 }}
+                >
+                  1.2 Tk/gm (Air)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setFreightRate('1.0'); setFreightUnit('per_gm'); }}
+                  style={{ padding: '2px 6px', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: freightRate === '1.0' && freightUnit === 'per_gm' ? 'rgba(245, 158, 11, 0.2)' : '#27272a', border: freightRate === '1.0' && freightUnit === 'per_gm' ? '1px solid #fbbf24' : '1px solid #3f3f46', color: '#a1a1aa', cursor: 'pointer' }}
+                >
+                  1.0 Tk/gm
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setFreightRate('850'); setFreightUnit('per_kg'); }}
+                  style={{ padding: '2px 6px', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: freightRate === '850' && freightUnit === 'per_kg' ? 'rgba(245, 158, 11, 0.2)' : '#27272a', border: freightRate === '850' && freightUnit === 'per_kg' ? '1px solid #fbbf24' : '1px solid #3f3f46', color: '#a1a1aa', cursor: 'pointer' }}
+                >
+                  850 Tk/kg
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setFreightRate('350'); setFreightUnit('per_kg'); }}
+                  style={{ padding: '2px 6px', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: freightRate === '350' && freightUnit === 'per_kg' ? 'rgba(245, 158, 11, 0.2)' : '#27272a', border: freightRate === '350' && freightUnit === 'per_kg' ? '1px solid #fbbf24' : '1px solid #3f3f46', color: '#a1a1aa', cursor: 'pointer' }}
+                >
+                  350 Tk/kg (Sea)
+                </button>
+              </div>
+            </div>
+
+            {/* Toggle: Include Weight in Total & Due */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '22px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: '#e2e8f0' }}>
+                <input
+                  type="checkbox"
+                  checked={includeWeightInTotal}
+                  onChange={(e) => setIncludeWeightInTotal(e.target.checked)}
+                  style={{ accentColor: '#dc2626', width: '16px', height: '16px', cursor: 'pointer' }}
+                />
+                <span style={{ fontWeight: 600 }}>Include Weight Price in Customer Total & Due</span>
+              </label>
+            </div>
+
             {/* List Notes */}
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={{ ...labelStyle, color: '#a1a1aa' }}>
@@ -1012,40 +1235,63 @@ export default function ProductListBuilder({
               <Scale style={{ width: '24px', height: '24px' }} />
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Total Weight (kg)</div>
+              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Total Weight</div>
               <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fbbf24' }}>
                 {totalWeightKg.toFixed(3)} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>kg</span>
               </div>
             </div>
           </div>
 
-          {/* Card 3: Total Price */}
+          {/* Card 3: Total Product Value */}
           <div style={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#34d399' }}>
               <Coins style={{ width: '24px', height: '24px' }} />
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Total Order Value</div>
+              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Product Value</div>
               <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#34d399' }}>
-                ৳{totalPriceBdt.toLocaleString()} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>BDT</span>
+                ৳{totalProductPriceBdt.toLocaleString()} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>BDT</span>
               </div>
             </div>
           </div>
 
-          {/* Card 4: Est Landed Total */}
-          <div style={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Card 4: Total Weight Price (Freight) */}
+          <div style={{ backgroundColor: '#09090b', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(245, 158, 11, 0.18)', border: '1px solid rgba(245, 158, 11, 0.4)', color: '#fbbf24' }}>
+              <Scale style={{ width: '24px', height: '24px' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: '#fbbf24', fontWeight: 700, textTransform: 'uppercase' }}>
+                Weight Price (Freight)
+              </div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fbbf24' }}>
+                ৳{totalWeightPriceBdt.toLocaleString()} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>BDT</span>
+              </div>
+              <div style={{ fontSize: '0.65rem', color: '#a1a1aa', marginTop: '2px' }}>
+                @ ৳{freightRate}/{freightUnit === 'per_gm' ? 'gm' : 'kg'}
+              </div>
+            </div>
+          </div>
+
+          {/* Card 5: Combined Grand Total */}
+          <div style={{ backgroundColor: '#09090b', border: '1px solid rgba(220, 38, 38, 0.4)', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(220, 38, 38, 0.15)', border: '1px solid rgba(220, 38, 38, 0.3)', color: '#f87171' }}>
               <Sparkles style={{ width: '24px', height: '24px' }} />
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Est. Landed Total</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#f87171' }}>
-                ৳{Math.round(estimatedLandedTotalBdt).toLocaleString()}
+              <div style={{ fontSize: '0.7rem', color: '#f87171', fontWeight: 700, textTransform: 'uppercase' }}>
+                {includeWeightInTotal ? 'Grand Total (Prod + Wt)' : 'Order Total (Prod Only)'}
+              </div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#ffffff' }}>
+                ৳{effectiveTotalOrderBdt.toLocaleString()} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>BDT</span>
+              </div>
+              <div style={{ fontSize: '0.65rem', color: '#a1a1aa', marginTop: '2px' }}>
+                ৳{totalProductPriceBdt.toLocaleString()} + ৳{totalWeightPriceBdt.toLocaleString()}
               </div>
             </div>
           </div>
 
-          {/* Card 5: Total Customer Paid */}
+          {/* Card 6: Total Customer Paid */}
           <div style={{ backgroundColor: '#09090b', border: '1px solid rgba(16, 185, 129, 0.4)', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(16, 185, 129, 0.18)', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#34d399' }}>
               <Wallet style={{ width: '24px', height: '24px' }} />
@@ -1058,7 +1304,7 @@ export default function ProductListBuilder({
             </div>
           </div>
 
-          {/* Card 6: Outstanding Customer Due */}
+          {/* Card 7: Outstanding Customer Due */}
           <div style={{ backgroundColor: '#09090b', border: `1px solid ${totalDueBdt > 0 ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.3)'}`, borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: totalDueBdt > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)', border: `1px solid ${totalDueBdt > 0 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`, color: totalDueBdt > 0 ? '#f87171' : '#34d399' }}>
               {totalDueBdt > 0 ? <AlertCircle style={{ width: '24px', height: '24px' }} /> : <CheckCircle2 style={{ width: '24px', height: '24px' }} />}
@@ -1093,7 +1339,7 @@ export default function ProductListBuilder({
               <Wallet style={{ width: '18px', height: '18px', color: '#10b981' }} />
               <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffffff' }}>Customer Payment Status:</span>
               <span style={{ fontSize: '0.8rem', padding: '2px 8px', borderRadius: '6px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#34d399', fontWeight: 800, border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                ৳{totalPaidBdt.toLocaleString()} Paid ({totalPriceBdt > 0 ? Math.round((totalPaidBdt / totalPriceBdt) * 100) : 0}%)
+                ৳{totalPaidBdt.toLocaleString()} Paid ({effectiveTotalOrderBdt > 0 ? Math.round((totalPaidBdt / effectiveTotalOrderBdt) * 100) : 0}%)
               </span>
               <span style={{ fontSize: '0.8rem', padding: '2px 8px', borderRadius: '6px', backgroundColor: totalDueBdt > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)', color: totalDueBdt > 0 ? '#f87171' : '#34d399', fontWeight: 800, border: totalDueBdt > 0 ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)' }}>
                 {totalDueBdt > 0 ? `৳${totalDueBdt.toLocaleString()} Due` : 'All Paid ✓'}
@@ -1358,9 +1604,17 @@ export default function ProductListBuilder({
 
             {/* Weight */}
             <div>
-              <label style={labelStyle}>
-                Unit Weight <span style={{ color: '#dc2626' }}>*</span>
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>
+                  <Scale style={{ width: '14px', height: '14px', color: '#fbbf24' }} />
+                  Unit Weight <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                {Number(newWeightVal) > 0 && (
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#fbbf24' }}>
+                    ≈ ৳{(calculateUnitWeightPriceBdt(calculateWeightKg(Number(newWeightVal) || 0, newWeightUnit), freightRate, freightUnit)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / unit
+                  </span>
+                )}
+              </div>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <input
                   type="number"
@@ -1381,6 +1635,53 @@ export default function ProductListBuilder({
                   <option value="gm">gm</option>
                 </select>
               </div>
+
+              {/* Dynamic Live Weight Price Preview Box */}
+              {Number(newWeightVal) > 0 && (
+                <div
+                  style={{
+                    marginTop: '8px',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                    border: '1px solid rgba(245, 158, 11, 0.35)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.78rem', color: '#fbbf24', fontWeight: 800 }}>
+                        ⚖️ {(calculateWeightKg(Number(newWeightVal) || 0, newWeightUnit) * 1000).toFixed(0)} gm
+                      </span>
+                      <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>➔</span>
+                      <span style={{ fontSize: '0.88rem', color: '#fde047', fontWeight: 900 }}>
+                        ৳{(calculateUnitWeightPriceBdt(calculateWeightKg(Number(newWeightVal) || 0, newWeightUnit), freightRate, freightUnit)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>
+                      Rate: ৳{freightRate}/{freightUnit === 'per_gm' ? 'gm' : 'kg'}
+                    </span>
+                  </div>
+
+                  {newQuantity > 1 && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', color: '#fde68a', borderTop: '1px dashed rgba(245, 158, 11, 0.25)', paddingTop: '4px', marginTop: '2px' }}>
+                      <span>Batch Weight Price ({newQuantity} units):</span>
+                      <span style={{ fontWeight: 800 }}>
+                        ৳{(calculateUnitWeightPriceBdt(calculateWeightKg(Number(newWeightVal) || 0, newWeightUnit), freightRate, freightUnit) * newQuantity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
+                      </span>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem', color: '#34d399', borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '4px', marginTop: '2px' }}>
+                    <span>Combined Unit (Product + Freight):</span>
+                    <strong style={{ color: '#4ade80' }}>
+                      ৳{(calculatePriceBdt(Number(newPrice) || 0, newCurrency) + calculateUnitWeightPriceBdt(calculateWeightKg(Number(newWeightVal) || 0, newWeightUnit), freightRate, freightUnit)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
+                    </strong>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Quantity */}
@@ -1479,10 +1780,14 @@ export default function ProductListBuilder({
                 <button
                   type="button"
                   onClick={() => {
-                    const lineTotal = calculatePriceBdt(Number(newPrice) || 0, newCurrency) * (newQuantity || 1);
-                    setNewPaidAmount(String(lineTotal));
+                    const priceBdt = calculatePriceBdt(Number(newPrice) || 0, newCurrency);
+                    const weightKg = calculateWeightKg(Number(newWeightVal) || 0, newWeightUnit);
+                    const unitWeightPrice = calculateUnitWeightPriceBdt(weightKg, freightRate, freightUnit);
+                    const combinedLineTotal = (priceBdt + unitWeightPrice) * (newQuantity || 1);
+                    const fullAmount = includeWeightInTotal ? combinedLineTotal : priceBdt * (newQuantity || 1);
+                    setNewPaidAmount(String(Math.round(fullAmount)));
                   }}
-                  title="Set 100% paid"
+                  title="Set 100% paid (including weight price)"
                   style={{
                     position: 'absolute',
                     right: '6px',
@@ -1561,7 +1866,11 @@ export default function ProductListBuilder({
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {items.map((item, index) => {
-                const lineTotalBdt = item.price_bdt * item.quantity;
+                const lineProductPrice = getItemProductLineTotal(item);
+                const unitWeightPrice = getItemUnitWeightPrice(item);
+                const lineWeightPrice = getItemLineWeightPrice(item);
+                const combinedLineTotal = lineProductPrice + lineWeightPrice;
+                const lineTotalBdt = includeWeightInTotal ? combinedLineTotal : lineProductPrice;
                 const lineTotalWeightKg = item.weight_kg * item.quantity;
                 const itemPaid = getItemPaid(item);
                 const itemDue = getItemDue(item);
@@ -1655,30 +1964,50 @@ export default function ProductListBuilder({
                         </button>
                       </div>
 
-                      {/* Weight Badge */}
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', fontWeight: 700, color: '#a1a1aa' }}>Weight</div>
-                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fbbf24' }}>
-                          {lineTotalWeightKg.toFixed(3)} kg
+                      {/* Weight & Freight Price Badge */}
+                      <div style={{ textAlign: 'right', minWidth: '95px' }}>
+                        <div style={{ fontSize: '0.62rem', textTransform: 'uppercase', fontWeight: 700, color: '#fbbf24', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                          <Scale style={{ width: '11px', height: '11px' }} />
+                          <span>Weight Price</span>
                         </div>
-                        <div style={{ fontSize: '0.65rem', color: '#71717a' }}>{item.weight_kg} kg / unit</div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fbbf24' }}>
+                          ৳{lineWeightPrice.toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: '0.65rem', color: '#a1a1aa' }}>
+                          {lineTotalWeightKg.toFixed(3)} kg (@ ৳{unitWeightPrice.toFixed(0)}/u)
+                        </div>
                       </div>
 
-                      {/* Price Badge */}
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', fontWeight: 700, color: '#a1a1aa' }}>Line Total</div>
+                      {/* Product Price Badge */}
+                      <div style={{ textAlign: 'right', minWidth: '95px' }}>
+                        <div style={{ fontSize: '0.62rem', textTransform: 'uppercase', fontWeight: 700, color: '#a1a1aa' }}>
+                          Product Value
+                        </div>
                         <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#34d399' }}>
-                          ৳{lineTotalBdt.toLocaleString()}
+                          ৳{lineProductPrice.toLocaleString()}
                         </div>
                         <div style={{ fontSize: '0.65rem', color: '#71717a' }}>
                           {item.currency !== 'BDT' ? (
                             <span>
                               <span style={{ color: '#38bdf8', fontWeight: 600 }}>{item.currency === 'RMB' ? '¥' : '$'}{item.price}</span>
-                              {' '}➔ ৳{item.price_bdt.toLocaleString()} / unit
+                              {' '}➔ ৳{item.price_bdt.toLocaleString()}/u
                             </span>
                           ) : (
-                            `৳${item.price_bdt.toLocaleString()} / unit`
+                            `৳${item.price_bdt.toLocaleString()}/u`
                           )}
+                        </div>
+                      </div>
+
+                      {/* Combined Line Total Badge */}
+                      <div style={{ textAlign: 'right', minWidth: '105px' }}>
+                        <div style={{ fontSize: '0.62rem', textTransform: 'uppercase', fontWeight: 700, color: '#f87171' }}>
+                          Combined Total
+                        </div>
+                        <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#ffffff' }}>
+                          ৳{combinedLineTotal.toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: '0.62rem', color: '#94a3b8' }}>
+                          ৳{lineProductPrice.toLocaleString()} + ৳{lineWeightPrice.toLocaleString()} wt
                         </div>
                       </div>
 
@@ -1907,7 +2236,14 @@ export default function ProductListBuilder({
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#34d399' }}>৳{list.total_price_bdt.toLocaleString()}</div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#38bdf8' }}>
+                          ৳{(list.grand_total_bdt || list.total_price_bdt).toLocaleString()}
+                        </div>
+                        {typeof list.total_weight_price_bdt === 'number' && list.total_weight_price_bdt > 0 && (
+                          <div style={{ fontSize: '0.7rem', color: '#0284c7', fontWeight: 600 }}>
+                            Freight: ৳{list.total_weight_price_bdt.toLocaleString()}
+                          </div>
+                        )}
                         {typeof list.total_paid_bdt === 'number' && (
                           <div style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 700 }}>
                             Paid: ৳{list.total_paid_bdt.toLocaleString()}
@@ -1971,7 +2307,7 @@ export default function ProductListBuilder({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '1rem' }}>
               <div style={{ backgroundColor: '#09090b', padding: '8px 10px', borderRadius: '8px', border: '1px solid #27272a' }}>
                 <div style={{ fontSize: '0.65rem', color: '#a1a1aa', textTransform: 'uppercase', fontWeight: 700 }}>Total Order</div>
-                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#ffffff', marginTop: '2px' }}>৳{totalPriceBdt.toLocaleString()}</div>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#ffffff', marginTop: '2px' }}>৳{effectiveTotalOrderBdt.toLocaleString()}</div>
               </div>
               <div style={{ backgroundColor: '#09090b', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
                 <div style={{ fontSize: '0.65rem', color: '#34d399', textTransform: 'uppercase', fontWeight: 700 }}>Current Paid</div>
@@ -2015,17 +2351,17 @@ export default function ProductListBuilder({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDepositAmountInput(String(Math.round(totalPriceBdt * 0.5)))}
+                  onClick={() => setDepositAmountInput(String(Math.round(effectiveTotalOrderBdt * 0.5)))}
                   style={{ padding: '4px 10px', borderRadius: '6px', backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#60a5fa', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
                 >
-                  50% Advance (৳{Math.round(totalPriceBdt * 0.5).toLocaleString()})
+                  50% Advance (৳{Math.round(effectiveTotalOrderBdt * 0.5).toLocaleString()})
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDepositAmountInput(String(Math.round(totalPriceBdt * 0.3)))}
+                  onClick={() => setDepositAmountInput(String(Math.round(effectiveTotalOrderBdt * 0.3)))}
                   style={{ padding: '4px 10px', borderRadius: '6px', backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#fbbf24', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
                 >
-                  30% Advance (৳{Math.round(totalPriceBdt * 0.3).toLocaleString()})
+                  30% Advance (৳{Math.round(effectiveTotalOrderBdt * 0.3).toLocaleString()})
                 </button>
               </div>
             </div>
@@ -2138,84 +2474,106 @@ export default function ProductListBuilder({
             </div>
           )}
 
-          {/* Summary Box Header (5 boxes including Paid & Due) */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-            <div style={{ flex: 1, backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
+          {/* Summary Box Header (Logistics & Financials) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '8px' }}>
+            <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
               <div style={{ fontSize: '9px', color: '#1e40af', textTransform: 'uppercase', fontWeight: 'bold' }}>Products</div>
-              <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1d4ed8', marginTop: '2px' }}>
-                {totalItemsCount} <span style={{ fontSize: '10px', fontWeight: 'normal' }}>({totalQuantity} pcs)</span>
+              <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#1d4ed8', marginTop: '2px' }}>
+                {totalItemsCount} <span style={{ fontSize: '9.5px', fontWeight: 'normal' }}>({totalQuantity} pcs)</span>
               </div>
             </div>
 
-            <div style={{ flex: 1, backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
+            <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
               <div style={{ fontSize: '9px', color: '#92400e', textTransform: 'uppercase', fontWeight: 'bold' }}>Total Weight</div>
-              <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', marginTop: '2px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#b45309', marginTop: '2px' }}>
                 {totalWeightKg.toFixed(3)} kg
               </div>
             </div>
 
-            <div style={{ flex: 1, backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
-              <div style={{ fontSize: '9px', color: '#334155', textTransform: 'uppercase', fontWeight: 'bold' }}>Order Value</div>
-              <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#0f172a', marginTop: '2px' }}>
-                ৳{totalPriceBdt.toLocaleString()}
+            <div style={{ backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '9px', color: '#334155', textTransform: 'uppercase', fontWeight: 'bold' }}>Product Price</div>
+              <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#0f172a', marginTop: '2px' }}>
+                ৳{totalProductPriceBdt.toLocaleString()}
               </div>
             </div>
 
-            <div style={{ flex: 1, backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
+            <div style={{ backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '9px', color: '#0369a1', textTransform: 'uppercase', fontWeight: 'bold' }}>Weight Freight Price</div>
+              <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#0284c7', marginTop: '2px' }}>
+                ৳{totalWeightPriceBdt.toLocaleString()}
+              </div>
+            </div>
+          </div>
+
+          {/* Payment & Balance Row */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '16px' }}>
+            <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '6px', padding: '8px 12px', textAlign: 'center', color: '#ffffff' }}>
+              <div style={{ fontSize: '9px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 'bold' }}>Grand Total (Product + Weight)</div>
+              <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#38bdf8', marginTop: '2px' }}>
+                ৳{grandTotalBdt.toLocaleString()}
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '6px', padding: '8px 12px', textAlign: 'center' }}>
               <div style={{ fontSize: '9px', color: '#065f46', textTransform: 'uppercase', fontWeight: 'bold' }}>Customer Paid</div>
-              <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#047857', marginTop: '2px' }}>
+              <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#047857', marginTop: '2px' }}>
                 ৳{totalPaidBdt.toLocaleString()}
               </div>
             </div>
 
-            <div style={{ flex: 1, backgroundColor: totalDueBdt > 0 ? '#fef2f2' : '#ecfdf5', border: `1px solid ${totalDueBdt > 0 ? '#fecaca' : '#a7f3d0'}`, borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
-              <div style={{ fontSize: '9px', color: totalDueBdt > 0 ? '#991b1b' : '#065f46', textTransform: 'uppercase', fontWeight: 'bold' }}>Customer Due</div>
-              <div style={{ fontSize: '14px', fontWeight: 'bold', color: totalDueBdt > 0 ? '#b91c1c' : '#047857', marginTop: '2px' }}>
+            <div style={{ backgroundColor: totalDueBdt > 0 ? '#fef2f2' : '#ecfdf5', border: `1px solid ${totalDueBdt > 0 ? '#fecaca' : '#a7f3d0'}`, borderRadius: '6px', padding: '8px 12px', textAlign: 'center' }}>
+              <div style={{ fontSize: '9px', color: totalDueBdt > 0 ? '#991b1b' : '#065f46', textTransform: 'uppercase', fontWeight: 'bold' }}>Customer Outstanding Due</div>
+              <div style={{ fontSize: '15px', fontWeight: 'bold', color: totalDueBdt > 0 ? '#b91c1c' : '#047857', marginTop: '2px' }}>
                 ৳{totalDueBdt.toLocaleString()}
               </div>
             </div>
           </div>
 
-          {/* Products Table with Paid & Due */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9px', marginBottom: '20px' }}>
+          {/* Products Table with Weight Freight, Paid & Due */}
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '8.5px', marginBottom: '16px' }}>
             <thead>
               <tr style={{ backgroundColor: '#1f2937', color: '#ffffff', textAlign: 'left' }}>
-                <th style={{ padding: '6px', width: '20px' }}>#</th>
-                <th style={{ padding: '6px', width: '38px' }}>Image</th>
-                <th style={{ padding: '6px' }}>Product Details</th>
-                <th style={{ padding: '6px', width: '60px' }}>Source Link</th>
-                <th style={{ padding: '6px', textAlign: 'right', width: '50px' }}>Unit Price</th>
-                <th style={{ padding: '6px', textAlign: 'center', width: '25px' }}>Qty</th>
-                <th style={{ padding: '6px', textAlign: 'right', width: '55px' }}>Line Total</th>
-                <th style={{ padding: '6px', textAlign: 'right', width: '50px' }}>Paid (BDT)</th>
-                <th style={{ padding: '6px', textAlign: 'right', width: '50px' }}>Due (BDT)</th>
-                <th style={{ padding: '6px', textAlign: 'center', width: '45px' }}>Status</th>
-                <th style={{ padding: '6px', textAlign: 'right', width: '45px' }}>Weight</th>
+                <th style={{ padding: '6px 4px', width: '18px' }}>#</th>
+                <th style={{ padding: '6px 4px', width: '34px' }}>Image</th>
+                <th style={{ padding: '6px 4px' }}>Product Details</th>
+                <th style={{ padding: '6px 4px', width: '45px' }}>Source Link</th>
+                <th style={{ padding: '6px 4px', textAlign: 'right', width: '52px' }}>Unit Price</th>
+                <th style={{ padding: '6px 4px', textAlign: 'center', width: '22px' }}>Qty</th>
+                <th style={{ padding: '6px 4px', textAlign: 'right', width: '60px' }}>Weight & Freight</th>
+                <th style={{ padding: '6px 4px', textAlign: 'right', width: '52px' }}>Product Line</th>
+                <th style={{ padding: '6px 4px', textAlign: 'right', width: '55px' }}>Combined Total</th>
+                <th style={{ padding: '6px 4px', textAlign: 'right', width: '45px' }}>Paid</th>
+                <th style={{ padding: '6px 4px', textAlign: 'right', width: '45px' }}>Due</th>
+                <th style={{ padding: '6px 4px', textAlign: 'center', width: '38px' }}>Status</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item, idx) => {
-                const lineTotal = getItemLineTotal(item);
+                const productLine = getItemProductLineTotal(item);
+                const unitWeightPrice = getItemUnitWeightPrice(item);
+                const lineWeightPrice = getItemLineWeightPrice(item);
+                const combinedLineTotal = getItemCombinedLineTotal(item);
+                const itemTotalWeight = (item.weight_kg || 0) * (item.quantity || 1);
                 const paid = getItemPaid(item);
                 const due = getItemDue(item);
                 const status = getItemStatus(item);
 
                 return (
                   <tr key={item.id} style={{ borderBottom: '1px solid #e5e7eb', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#f9fafb' }}>
-                    <td style={{ padding: '6px', fontWeight: 'bold', textAlign: 'center' }}>{idx + 1}</td>
-                    <td style={{ padding: '6px' }}>
+                    <td style={{ padding: '5px 4px', fontWeight: 'bold', textAlign: 'center' }}>{idx + 1}</td>
+                    <td style={{ padding: '5px 4px' }}>
                       {item.image_url ? (
-                        <img src={item.image_url} alt="" style={{ width: '34px', height: '34px', objectFit: 'cover', borderRadius: '4px' }} />
+                        <img src={item.image_url} alt="" style={{ width: '30px', height: '30px', objectFit: 'cover', borderRadius: '4px' }} />
                       ) : (
-                        <div style={{ width: '34px', height: '34px', backgroundColor: '#e5e7eb', borderRadius: '4px' }} />
+                        <div style={{ width: '30px', height: '30px', backgroundColor: '#e5e7eb', borderRadius: '4px' }} />
                       )}
                     </td>
-                    <td style={{ padding: '6px' }}>
-                      <div style={{ fontWeight: 'bold', color: '#111827', fontSize: '10px' }}>{item.title}</div>
+                    <td style={{ padding: '5px 4px' }}>
+                      <div style={{ fontWeight: 'bold', color: '#111827', fontSize: '9.5px' }}>{item.title}</div>
                       {item.details && <div style={{ color: '#4b5563', fontSize: '8px', marginTop: '1px' }}>{item.details}</div>}
                       {item.platform && <div style={{ color: '#dc2626', fontSize: '7.5px', textTransform: 'uppercase', fontWeight: 'bold', marginTop: '1px' }}>Platform: {item.platform}</div>}
                     </td>
-                    <td style={{ padding: '6px', wordBreak: 'break-all' }}>
+                    <td style={{ padding: '5px 4px', wordBreak: 'break-all' }}>
                       {item.product_url ? (
                         <a href={item.product_url} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', textDecoration: 'underline' }}>
                           View Link
@@ -2224,24 +2582,32 @@ export default function ProductListBuilder({
                         <span style={{ color: '#9ca3af' }}>N/A</span>
                       )}
                     </td>
-                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: '500' }}>
-                      {item.currency !== 'BDT' ? `${item.currency === 'RMB' ? '¥' : '$'}${item.price} (৳${item.price_bdt.toLocaleString()})` : `৳${item.price_bdt.toLocaleString()}`}
+                    <td style={{ padding: '5px 4px', textAlign: 'right', fontWeight: '500' }}>
+                      <div>৳{item.price_bdt.toLocaleString()}</div>
+                      <div style={{ fontSize: '7.5px', color: '#0284c7' }}>+৳{unitWeightPrice.toFixed(0)} wt</div>
                     </td>
-                    <td style={{ padding: '6px', textAlign: 'center', fontWeight: 'bold' }}>{item.quantity}</td>
-                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: '#111827' }}>
-                      ৳{lineTotal.toLocaleString()}
+                    <td style={{ padding: '5px 4px', textAlign: 'center', fontWeight: 'bold' }}>{item.quantity}</td>
+                    <td style={{ padding: '5px 4px', textAlign: 'right' }}>
+                      <div style={{ color: '#b45309', fontWeight: 'bold' }}>{itemTotalWeight.toFixed(3)} kg</div>
+                      <div style={{ color: '#0284c7', fontSize: '8px', fontWeight: '600' }}>৳{lineWeightPrice.toFixed(0)} freight</div>
                     </td>
-                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: '#047857' }}>
+                    <td style={{ padding: '5px 4px', textAlign: 'right', fontWeight: '600', color: '#374151' }}>
+                      ৳{productLine.toLocaleString()}
+                    </td>
+                    <td style={{ padding: '5px 4px', textAlign: 'right', fontWeight: 'bold', color: '#111827' }}>
+                      ৳{combinedLineTotal.toLocaleString()}
+                    </td>
+                    <td style={{ padding: '5px 4px', textAlign: 'right', fontWeight: 'bold', color: '#047857' }}>
                       ৳{paid.toLocaleString()}
                     </td>
-                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: due > 0 ? '#b91c1c' : '#047857' }}>
+                    <td style={{ padding: '5px 4px', textAlign: 'right', fontWeight: 'bold', color: due > 0 ? '#b91c1c' : '#047857' }}>
                       ৳{due.toLocaleString()}
                     </td>
-                    <td style={{ padding: '6px', textAlign: 'center' }}>
+                    <td style={{ padding: '5px 4px', textAlign: 'center' }}>
                       <span
                         style={{
-                          fontSize: '7.5px',
-                          padding: '2px 4px',
+                          fontSize: '7px',
+                          padding: '2px 3px',
                           borderRadius: '3px',
                           fontWeight: 'bold',
                           textTransform: 'uppercase',
@@ -2252,42 +2618,49 @@ export default function ProductListBuilder({
                         {status}
                       </span>
                     </td>
-                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: '#b45309' }}>
-                      {(item.weight_kg * item.quantity).toFixed(3)} kg
-                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
 
-          {/* Grand Totals Footer with Paid & Due */}
-          <div style={{ backgroundColor: '#111827', color: '#ffffff', borderRadius: '8px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {/* Grand Totals Footer with Weight Freight, Paid & Due */}
+          <div style={{ backgroundColor: '#111827', color: '#ffffff', borderRadius: '8px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontSize: '11px', fontWeight: 'bold' }}>GRAND TOTAL STATEMENT</div>
-              <div style={{ fontSize: '9px', color: '#9ca3af', marginTop: '2px' }}>Formatted for A4 Standard Paper</div>
+              <div style={{ fontSize: '8.5px', color: '#9ca3af', marginTop: '2px' }}>
+                Cargo Freight Rate: {freightRate} Tk/{freightUnit === 'per_gm' ? 'gm' : 'kg'} (1,200 Tk/kg) • Formatted for A4 Standard Paper
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: '16px', textAlign: 'right' }}>
+            <div style={{ display: 'flex', gap: '12px', textAlign: 'right', flexWrap: 'wrap' }}>
               <div>
-                <div style={{ fontSize: '9px', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 'bold' }}>TOTAL WEIGHT</div>
-                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#fbbf24' }}>{totalWeightKg.toFixed(3)} kg</div>
+                <div style={{ fontSize: '8.5px', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 'bold' }}>TOTAL WEIGHT</div>
+                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#fbbf24' }}>{totalWeightKg.toFixed(3)} kg</div>
               </div>
               <div>
-                <div style={{ fontSize: '9px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 'bold' }}>TOTAL ORDER</div>
-                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>৳{totalPriceBdt.toLocaleString()} BDT</div>
+                <div style={{ fontSize: '8.5px', color: '#cbd5e1', textTransform: 'uppercase', fontWeight: 'bold' }}>PRODUCT VALUE</div>
+                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#ffffff' }}>৳{totalProductPriceBdt.toLocaleString()} BDT</div>
               </div>
               <div>
-                <div style={{ fontSize: '9px', color: '#34d399', textTransform: 'uppercase', fontWeight: 'bold' }}>TOTAL PAID</div>
-                <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#34d399' }}>৳{totalPaidBdt.toLocaleString()} BDT</div>
+                <div style={{ fontSize: '8.5px', color: '#38bdf8', textTransform: 'uppercase', fontWeight: 'bold' }}>WEIGHT FREIGHT</div>
+                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#38bdf8' }}>৳{totalWeightPriceBdt.toLocaleString()} BDT</div>
               </div>
               <div>
-                <div style={{ fontSize: '9px', color: totalDueBdt > 0 ? '#f87171' : '#34d399', textTransform: 'uppercase', fontWeight: 'bold' }}>OUTSTANDING DUE</div>
-                <div style={{ fontSize: '15px', fontWeight: 'bold', color: totalDueBdt > 0 ? '#f87171' : '#34d399' }}>৳{totalDueBdt.toLocaleString()} BDT</div>
+                <div style={{ fontSize: '8.5px', color: '#60a5fa', textTransform: 'uppercase', fontWeight: 'bold' }}>GRAND TOTAL</div>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#93c5fd' }}>৳{grandTotalBdt.toLocaleString()} BDT</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '8.5px', color: '#34d399', textTransform: 'uppercase', fontWeight: 'bold' }}>TOTAL PAID</div>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#34d399' }}>৳{totalPaidBdt.toLocaleString()} BDT</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '8.5px', color: totalDueBdt > 0 ? '#f87171' : '#34d399', textTransform: 'uppercase', fontWeight: 'bold' }}>OUTSTANDING DUE</div>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color: totalDueBdt > 0 ? '#f87171' : '#34d399' }}>৳{totalDueBdt.toLocaleString()} BDT</div>
               </div>
             </div>
           </div>
 
-          <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '9px', color: '#6b7280', borderTop: '1px solid #e5e7eb', paddingTop: '8px' }}>
+          <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '8.5px', color: '#6b7280', borderTop: '1px solid #e5e7eb', paddingTop: '6px' }}>
             Generated by OMNI Sourcing & Costing Engine • Customer Payment & Balance Statement
           </div>
         </div>

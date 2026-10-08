@@ -21,6 +21,10 @@ class ProductListItem(BaseModel):
     paid_amount_bdt: Optional[Decimal] = Decimal("0.00")
     due_amount_bdt: Optional[Decimal] = Decimal("0.00")
     payment_status: Optional[str] = "unpaid"
+    # Weight Price / Freight fields
+    weight_price_bdt: Optional[Decimal] = Decimal("0.00")
+    line_weight_price_bdt: Optional[Decimal] = Decimal("0.00")
+    combined_line_total_bdt: Optional[Decimal] = None
 
 
 class ProductListCreate(BaseModel):
@@ -31,6 +35,10 @@ class ProductListCreate(BaseModel):
     total_paid_bdt: Optional[Decimal] = Decimal("0.00")
     total_due_bdt: Optional[Decimal] = Decimal("0.00")
     payment_status: Optional[str] = "unpaid"
+    freight_rate: Optional[Decimal] = Decimal("1.20")
+    freight_unit: Optional[str] = "per_gm"
+    total_weight_price_bdt: Optional[Decimal] = Decimal("0.00")
+    grand_total_bdt: Optional[Decimal] = None
 
 
 class ProductListResponse(BaseModel):
@@ -45,6 +53,11 @@ class ProductListResponse(BaseModel):
     total_paid_bdt: Decimal = Decimal("0.00")
     total_due_bdt: Decimal = Decimal("0.00")
     payment_status: str = "unpaid"
+    freight_rate: Optional[Decimal] = Decimal("1.20")
+    freight_unit: Optional[str] = "per_gm"
+    total_weight_price_bdt: Optional[Decimal] = Decimal("0.00")
+    grand_total_bdt: Optional[Decimal] = Decimal("0.00")
     notes: Optional[str] = None
     created_at: str
     updated_at: str
+

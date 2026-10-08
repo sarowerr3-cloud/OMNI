@@ -539,7 +539,10 @@ export default function Home() {
     const weightKg = Number(math.override.weight) || 0.35;
     const qty = Number(math.override.qty) || 1;
     const priceBdt = math.unitPriceBdt;
-    const lineTotal = priceBdt * qty;
+    const lineProductTotal = priceBdt * qty;
+    const lineWeightPrice = Math.max(0, math.internationalFreightBdt || 0);
+    const unitWeightPrice = qty > 0 ? lineWeightPrice / qty : lineWeightPrice;
+    const combinedLineTotal = lineProductTotal + lineWeightPrice;
 
     const newItem: ProductItem = {
       id: `prod_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -550,16 +553,20 @@ export default function Home() {
       price_bdt: priceBdt,
       weight_kg: weightKg,
       quantity: qty,
+      weight_price_bdt: Number(unitWeightPrice.toFixed(2)),
+      line_weight_price_bdt: Number(lineWeightPrice.toFixed(2)),
+      combined_unit_price_bdt: Number((priceBdt + unitWeightPrice).toFixed(2)),
+      combined_line_total_bdt: Number(combinedLineTotal.toFixed(2)),
       image_url: imgUrl,
       product_url: res.product.url,
       platform: res.product.platform,
       paid_amount: 0,
-      due_amount: lineTotal,
+      due_amount: combinedLineTotal,
       payment_status: 'unpaid'
     };
 
     setProductListItems((prev) => [...prev, newItem]);
-    showToast(`✅ Added "${title.substring(0, 25)}..." to Product List!`);
+    showToast(`✅ Added "${title.substring(0, 25)}..." with weight price to Product List!`);
   };
 
   const addManualProductToList = () => {
@@ -573,7 +580,19 @@ export default function Home() {
     const priceBdt = rmbPrice * rate;
     const weightVal = Number(manualWeightVal) || 0;
     const weightKg = manualWeightUnit === 'gm' ? weightVal / 1000.0 : weightVal;
-    const lineTotal = priceBdt * qty;
+    const lineProductTotal = priceBdt * qty;
+
+    // Weight Price Calculation
+    const freightRateNum = Number(manualFreightRate) || 1.2;
+    let unitWeightPrice = 0;
+    if (manualFreightUnit === 'per_gm') {
+      const weightGm = manualWeightUnit === 'gm' ? weightVal : weightVal * 1000.0;
+      unitWeightPrice = weightGm * freightRateNum;
+    } else {
+      unitWeightPrice = weightKg * freightRateNum;
+    }
+    const lineWeightPrice = unitWeightPrice * qty;
+    const combinedLineTotal = lineProductTotal + lineWeightPrice;
 
     const newItem: ProductItem = {
       id: `prod_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -584,14 +603,18 @@ export default function Home() {
       price_bdt: priceBdt,
       weight_kg: Number(weightKg.toFixed(3)),
       quantity: qty,
+      weight_price_bdt: Number(unitWeightPrice.toFixed(2)),
+      line_weight_price_bdt: Number(lineWeightPrice.toFixed(2)),
+      combined_unit_price_bdt: Number((priceBdt + unitWeightPrice).toFixed(2)),
+      combined_line_total_bdt: Number(combinedLineTotal.toFixed(2)),
       platform: '1688',
       paid_amount: 0,
-      due_amount: lineTotal,
+      due_amount: combinedLineTotal,
       payment_status: 'unpaid'
     };
 
     setProductListItems((prev) => [...prev, newItem]);
-    showToast(`✅ Added "${newItem.title}" to Product List!`);
+    showToast(`✅ Added "${newItem.title}" with weight price to Product List!`);
   };
 
   const handlePitchToCustomers = (item: ProductItem) => {
@@ -2617,6 +2640,8 @@ export default function Home() {
               showToast={showToast}
               defaultRmbRate={liveRates?.cny_to_bdt ? String(liveRates.cny_to_bdt) : globalRateRmbBdt}
               defaultUsdRate={liveRates?.usd_to_bdt ? String(liveRates.usd_to_bdt) : '121.50'}
+              defaultFreightRate={manualFreightRate || '1.2'}
+              defaultFreightUnit={manualFreightUnit || 'per_gm'}
               onPitchToCustomers={handlePitchToCustomers}
             />
           </section>
