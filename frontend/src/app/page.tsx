@@ -21,6 +21,7 @@ export default function Home() {
   const [productListItems, setProductListItems] = useState<ProductItem[]>([]);
   const [customerManagerProduct, setCustomerManagerProduct] = useState<ProductItem | null>(null);
   const [showIntroVideo, setShowIntroVideo] = useState<boolean>(false);
+  const [cinematicLoading, setCinematicLoading] = useState<boolean>(false);
   
   // Search history state management
   const { history: searchHistory, addSearch, removeSearch, clearHistory } = useSearchHistory();
@@ -318,30 +319,43 @@ export default function Home() {
     }
   };
 
-  const handleSearch = async (e?: React.FormEvent, customQuery?: string) => {
+  const handleSearch = async (e?: React.FormEvent, customQuery?: string, forceMode?: 'text' | 'image') => {
     if (e) e.preventDefault();
-    const searchQuery = customQuery !== undefined ? customQuery : query;
+    const targetMode = forceMode || (customQuery !== undefined ? 'text' : (searchMode === 'image' ? 'image' : 'text'));
+    const targetQuery = customQuery !== undefined ? customQuery : query;
 
-    if (searchMode === 'text' && !searchQuery.trim()) return;
-    if (searchMode === 'image' && !selectedFile) {
-      alert('Please select or capture a product image to search.');
-      return;
+    if (targetMode === 'text') {
+      if (!targetQuery.trim()) return;
+      if (searchMode !== 'text') {
+        setSearchMode('text');
+      }
+      if (customQuery !== undefined) {
+        setQuery(customQuery);
+      }
+    } else if (targetMode === 'image') {
+      if (!selectedFile) {
+        alert('Please select or capture a product image to search.');
+        return;
+      }
+      if (searchMode !== 'image') {
+        setSearchMode('image');
+      }
     }
 
     setLoading(true);
     setErrorMessage(null);
 
     try {
-      if (searchMode === 'text') {
+      if (targetMode === 'text') {
         const res = await fetch(`${apiUrl}/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: searchQuery,
+            query: targetQuery.trim(),
             quantity: Number(globalQuantity) || 10,
             shipping_method: globalShippingMethod,
             user_weight_kg: globalWeightKg ? Number(globalWeightKg) : null,
-            rate_rmb_bdt: globalRateRmbBdt ? Number(globalRateRmbBdt) : 16.50,
+            rate_rmb_bdt: globalRateRmbBdt ? Number(globalRateRmbBdt) : 20.00,
           }),
         });
 
@@ -351,9 +365,9 @@ export default function Home() {
         }
         const data = await res.json();
         setSearchResults(data);
-        initOverrides(data.sourcing_results);
-        addSearch(searchQuery, 'text', data.sourcing_results?.length || 0);
-      } else if (searchMode === 'image') {
+        initOverrides(data.sourcing_results || []);
+        addSearch(targetQuery.trim(), 'text', data.sourcing_results?.length || 0);
+      } else if (targetMode === 'image') {
         const formData = new FormData();
         formData.append('file', selectedFile!);
         formData.append('quantity', String(globalQuantity || 10));
@@ -372,7 +386,7 @@ export default function Home() {
         }
         const data = await res.json();
         setSearchResults(data);
-        initOverrides(data.sourcing_results);
+        initOverrides(data.sourcing_results || []);
         const searchLabel = data.image_analysis?.description_en || selectedFile?.name || 'Image Search';
         addSearch(searchLabel, 'image', data.sourcing_results?.length || 0);
       }
@@ -384,13 +398,19 @@ export default function Home() {
     }
   };
 
+  // Auto-run initial sourcing search on first mount so live supplier data renders immediately
+  useEffect(() => {
+    handleSearch(undefined, 'Smart Watch Ultra');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const initOverrides = (results: SourcedProductResult[]) => {
     const initial: Record<number, any> = {};
-    results.forEach((_, idx) => {
+    results.forEach((res, idx) => {
       initial[idx] = {
         rmbRate: globalRateRmbBdt,
         qty: globalQuantity,
-        weight: globalWeightKg,
+        weight: globalWeightKg || String(res.product?.weight_kg || '0.35'),
         shipping: globalShippingMethod,
         selectedImgIdx: 0,
         showVideo: false,
@@ -425,16 +445,20 @@ export default function Home() {
       qty: globalQuantity,
       weight: globalWeightKg,
       shipping: globalShippingMethod,
+      selectedImgIdx: 0,
+      showVideo: false,
+      showSpecs: false,
     };
 
     const rmbRate = Number(override.rmbRate) || 20.00;
     const usdRate = 120.0;
     const qty = Number(override.qty) || 1;
-    const weight = Number(override.weight) || 0.30;
+    const weight = Number(override.weight) || (Number(res.product?.weight_kg) || 0.30);
     const shipping = override.shipping || 'air';
 
     // Item price in BDT
-    const unitPriceBdt = res.product.currency === 'RMB' ? res.product.price * rmbRate : res.product.price * usdRate;
+    const supplierPrice = Number(res.product.price) || 0;
+    const unitPriceBdt = res.product.currency === 'RMB' ? supplierPrice * rmbRate : supplierPrice * usdRate;
     const totalItemPriceBdt = unitPriceBdt * qty;
     const domesticShippingBdt = 20.0 * qty;
     const agentFeeBdt = totalItemPriceBdt * 0.05;
@@ -446,10 +470,10 @@ export default function Home() {
     const totalLandedCost = totalItemPriceBdt + domesticShippingBdt + agentFeeBdt + internationalFreightBdt + dutyVatBdt + paymentFeeBdt;
     const perUnitLandedCost = totalLandedCost / qty;
 
-    const avgLocalBdPrice = res.market_analysis?.local_bd_market_avg_price || 1500;
+    const avgLocalBdPrice = Number(res.market_analysis?.local_bd_market_avg_price) || 1500;
     const netProfit = avgLocalBdPrice - perUnitLandedCost;
-    const grossMargin = (netProfit / avgLocalBdPrice) * 100;
-    const roi = (netProfit / perUnitLandedCost) * 100;
+    const grossMargin = avgLocalBdPrice > 0 ? (netProfit / avgLocalBdPrice) * 100 : 0;
+    const roi = perUnitLandedCost > 0 ? (netProfit / perUnitLandedCost) * 100 : 0;
 
     return {
       unitPriceBdt,
@@ -902,49 +926,84 @@ export default function Home() {
                 </p>
               </div>
 
-              {/* Keyword vs Image Mode Pill Switcher */}
+              {/* Keyword vs Image Mode Pill Switcher & Cinematic Video Toggle */}
               <div
                 style={{
-                  display: 'inline-flex',
-                  background: 'rgba(9, 9, 11, 0.65)',
-                  padding: '3px',
-                  borderRadius: '10px',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.6rem',
+                  flexWrap: 'wrap',
                 }}
               >
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    background: 'rgba(9, 9, 11, 0.65)',
+                    padding: '3px',
+                    borderRadius: '10px',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSearchMode('text')}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '8px',
+                      background: searchMode === 'text' ? '#dc2626' : 'transparent',
+                      color: searchMode === 'text' ? '#ffffff' : '#a1a1aa',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      border: 'none',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    ✍️ Keyword Search
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSearchMode('image')}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '8px',
+                      background: searchMode === 'image' ? '#dc2626' : 'transparent',
+                      color: searchMode === 'image' ? '#ffffff' : '#a1a1aa',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      border: 'none',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    📷 Photo Search (AI Vision)
+                  </button>
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => setSearchMode('text')}
+                  onClick={() => {
+                    const nextVal = !cinematicLoading;
+                    setCinematicLoading(nextVal);
+                    showToast(nextVal ? '🎬 Cinematic Video Loading Screen: ENABLED' : '⚡ Snappy Fast Search Mode: ENABLED');
+                  }}
+                  title="Toggle cinematic video loading screen during searches"
                   style={{
                     padding: '5px 12px',
-                    borderRadius: '8px',
-                    background: searchMode === 'text' ? '#dc2626' : 'transparent',
-                    color: searchMode === 'text' ? '#ffffff' : '#a1a1aa',
+                    borderRadius: '10px',
+                    background: cinematicLoading ? 'rgba(220, 38, 38, 0.2)' : 'rgba(9, 9, 11, 0.65)',
+                    border: cinematicLoading ? '1px solid #dc2626' : '1px solid rgba(255, 255, 255, 0.1)',
+                    color: cinematicLoading ? '#f87171' : '#a1a1aa',
                     fontSize: '0.78rem',
                     fontWeight: 600,
-                    border: 'none',
                     cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  ✍️ Keyword Search
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSearchMode('image')}
-                  style={{
-                    padding: '5px 12px',
-                    borderRadius: '8px',
-                    background: searchMode === 'image' ? '#dc2626' : 'transparent',
-                    color: searchMode === 'image' ? '#ffffff' : '#a1a1aa',
-                    fontSize: '0.78rem',
-                    fontWeight: 600,
-                    border: 'none',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  📷 Photo Search (AI Vision)
+                  <span>{cinematicLoading ? '🎬 Video FX: ON' : '⚡ Snappy FX'}</span>
                 </button>
               </div>
             </div>
@@ -1020,6 +1079,7 @@ export default function Home() {
                         onClick={() => {
                           setQuery(chip.val);
                           showToast("Searching for " + chip.val + "...");
+                          handleSearch(undefined, chip.val);
                         }}
                         style={{
                           background: 'rgba(9, 9, 11, 0.6)',
@@ -1856,12 +1916,105 @@ export default function Home() {
         )}
 
         {/* Loading Skeleton & Progress Overlay */}
-        {searchMode !== 'manual' && loading && (
+        {(searchMode === 'text' || searchMode === 'image') && loading && (
           <SearchLoadingOverlay mode={searchMode === 'image' ? 'image' : 'text'} />
         )}
 
+        {/* Friendly Invitation / Empty State when no search executed yet */}
+        {(searchMode === 'text' || searchMode === 'image') && !loading && !searchResults && (
+          <div
+            style={{
+              background: 'rgba(24, 24, 27, 0.72)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              borderRadius: '16px',
+              border: '1px dashed rgba(255, 255, 255, 0.15)',
+              padding: '3rem 1.5rem',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '1rem',
+              marginBottom: '2rem',
+            }}
+          >
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: 'rgba(220, 38, 38, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '2rem',
+                border: '1px solid rgba(220, 38, 38, 0.3)',
+              }}
+            >
+              🇨🇳
+            </div>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+              Direct China Factory Sourcing Engine
+            </h3>
+            <p style={{ color: '#a1a1aa', fontSize: '0.9rem', maxWidth: '520px', margin: 0, lineHeight: 1.5 }}>
+              Enter a product title above or click any trending product to fetch verified wholesale pricing from 1688, AliExpress, and Pinduoduo, calculate complete customs duty and landed freight in BDT, and compare against local Bangladesh market prices.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center', marginTop: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => handleSearch(undefined, 'Smart Watch Ultra')}
+                style={{
+                  background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '10px 18px',
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 10px rgba(220, 38, 38, 0.35)',
+                }}
+              >
+                ⌚ Source Smart Watch Ultra
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSearch(undefined, 'Wireless Earbuds TWS')}
+                style={{
+                  background: '#27272a',
+                  color: '#ffffff',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '10px',
+                  padding: '10px 18px',
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  cursor: 'pointer',
+                }}
+              >
+                🎧 Source TWS Earbuds
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSearch(undefined, 'Ladies Leather Handbag')}
+                style={{
+                  background: '#27272a',
+                  color: '#ffffff',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '10px',
+                  padding: '10px 18px',
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  cursor: 'pointer',
+                }}
+              >
+                👜 Source Ladies Bags
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Results Section for Text/Image Search */}
-        {searchMode !== 'manual' && !loading && searchResults && (
+        {(searchMode === 'text' || searchMode === 'image') && !loading && searchResults && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
             {/* Gemini Vision Analysis Banner (if image search) */}
             {searchResults?.image_analysis && (
@@ -2410,7 +2563,7 @@ export default function Home() {
       />
 
       {/* Cinematic Video Loading Screen during searches */}
-      {loading && (
+      {loading && cinematicLoading && (
         <VideoLoadingOverlay
           mode={searchMode === 'image' ? 'image' : 'text'}
           query={query}

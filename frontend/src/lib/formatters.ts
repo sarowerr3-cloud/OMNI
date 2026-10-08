@@ -3,9 +3,11 @@
 /**
  * Format a number as a localized money string (no currency symbol).
  */
-export const formatMoney = (val: number | undefined | null): string => {
-  if (val === undefined || val === null || isNaN(val)) return '0';
-  return Number(val).toLocaleString();
+export const formatMoney = (val: number | string | undefined | null): string => {
+  if (val === undefined || val === null || val === '') return '0';
+  const num = typeof val === 'string' ? parseFloat(val) : val;
+  if (isNaN(num)) return '0';
+  return num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 };
 
 /**
