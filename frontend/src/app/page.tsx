@@ -14,6 +14,7 @@ import ComparisonTable from '@/components/ComparisonTable';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { exportQuotationPdf } from '@/lib/pdfExport';
 import NegotiationModal from '@/components/NegotiationModal';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 export default function Home() {
   const [health, setHealth] = useState<any>(null);
@@ -39,25 +40,25 @@ export default function Home() {
   // PDF Export loading state
   const [exportingPdf, setExportingPdf] = useState(false);
   
-  // Search Parameters
-  const [query, setQuery] = useState('Smart Watch Ultra');
-  const [globalQuantity, setGlobalQuantity] = useState<number>(10);
+  // Search Parameters (all input boxes empty by default)
+  const [query, setQuery] = useState('');
+  const [globalQuantity, setGlobalQuantity] = useState<string>('');
   const [globalShippingMethod, setGlobalShippingMethod] = useState<'air' | 'sea'>('air');
-  const [globalWeightKg, setGlobalWeightKg] = useState<string>('0.35');
-  const [globalRateRmbBdt, setGlobalRateRmbBdt] = useState<string>('20.00');
+  const [globalWeightKg, setGlobalWeightKg] = useState<string>('');
+  const [globalRateRmbBdt, setGlobalRateRmbBdt] = useState<string>('');
   
   // Image Upload State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Manual Calculator State (Defaults: 20.00 RMB/BDT rate, 1.2 Tk/gm freight rate, all input boxes empty by default)
+  // Manual Calculator State (Defaults: 20.00 RMB/BDT rate & 1.2 Tk/gm freight rate fallbacks, all input boxes empty by default)
   const [manualRmbPrice, setManualRmbPrice] = useState<string>('');
-  const [manualRateRmb, setManualRateRmb] = useState<string>('20.00');
+  const [manualRateRmb, setManualRateRmb] = useState<string>('');
   const [manualQty, setManualQty] = useState<string>('');
   const [manualWeightVal, setManualWeightVal] = useState<string>('');
   const [manualWeightUnit, setManualWeightUnit] = useState<'kg' | 'gm'>('gm');
-  const [manualFreightRate, setManualFreightRate] = useState<string>('1.2');
+  const [manualFreightRate, setManualFreightRate] = useState<string>('');
   const [manualFreightUnit, setManualFreightUnit] = useState<'per_kg' | 'per_gm'>('per_gm');
   const [manualDomesticShipping, setManualDomesticShipping] = useState<string>('');
   const [manualAgentFeePct, setManualAgentFeePct] = useState<string>('');
@@ -100,19 +101,19 @@ export default function Home() {
 
   const applyPreset = (type: 'sample' | 'medium' | 'bulk_sea') => {
     if (type === 'sample') {
-      setGlobalQuantity(5);
+      setGlobalQuantity('5');
       setGlobalShippingMethod('air');
       setGlobalWeightKg('0.35');
       setGlobalRateRmbBdt('20.00');
       showToast('⚡ Applied Sample Preset: 5 Pcs | Air Shipping');
     } else if (type === 'medium') {
-      setGlobalQuantity(50);
+      setGlobalQuantity('50');
       setGlobalShippingMethod('air');
       setGlobalWeightKg('0.35');
       setGlobalRateRmbBdt('20.00');
       showToast('📦 Applied Medium Wholesale Preset: 50 Pcs | Air Shipping');
     } else if (type === 'bulk_sea') {
-      setGlobalQuantity(500);
+      setGlobalQuantity('500');
       setGlobalShippingMethod('sea');
       setGlobalWeightKg('0.35');
       setGlobalRateRmbBdt('20.00');
@@ -162,7 +163,7 @@ export default function Home() {
     const weightKg = manualWeightUnit === 'gm' ? weightVal / 1000.0 : weightVal;
     const totalWeightKg = qty > 0 ? weightKg * qty : weightKg;
 
-    const freightRate = Number(manualFreightRate) || 0;
+    const freightRate = manualFreightRate !== '' ? Number(manualFreightRate) : (manualFreightUnit === 'per_gm' ? 1.2 : 1200);
     let unitFreightBdt = 0;
     if (manualFreightUnit === 'per_gm') {
       const unitWeightGm = manualWeightUnit === 'gm' ? weightVal : weightVal * 1000.0;
@@ -335,18 +336,18 @@ export default function Home() {
 
   const resetManualDefaults = () => {
     setManualRmbPrice('');
-    setManualRateRmb('20.00');
+    setManualRateRmb('');
     setManualQty('');
     setManualWeightVal('');
     setManualWeightUnit('gm');
-    setManualFreightRate('1.2');
+    setManualFreightRate('');
     setManualFreightUnit('per_gm');
     setManualDomesticShipping('');
     setManualAgentFeePct('');
     setManualDutyPct('');
     setManualOtherCosts('');
     setManualTargetPrice('');
-    showToast('🔄 Calculator Reset: RMB rate set to ৳20.00, Freight to ৳1.2/gm, all boxes cleared');
+    showToast('🔄 Calculator Reset: All input boxes cleared');
   };
 
   const applyTargetMarginPreset = (marginPct: number) => {
@@ -439,18 +440,14 @@ export default function Home() {
     }
   };
 
-  // Auto-run initial sourcing search on first mount so live supplier data renders immediately
-  useEffect(() => {
-    handleSearch(undefined, 'Smart Watch Ultra');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  // Default to empty search input box on startup without forced pre-filling
+  // Users can click trending chips or enter custom products
   const initOverrides = (results: SourcedProductResult[]) => {
     const initial: Record<number, any> = {};
     results.forEach((res, idx) => {
       initial[idx] = {
-        rmbRate: globalRateRmbBdt,
-        qty: globalQuantity,
+        rmbRate: globalRateRmbBdt || '20.00',
+        qty: Number(globalQuantity) > 0 ? Number(globalQuantity) : 10,
         weight: globalWeightKg || String(res.product?.weight_kg || '0.35'),
         shipping: globalShippingMethod,
         selectedImgIdx: 0,
@@ -1367,7 +1364,7 @@ export default function Home() {
                       step="0.05"
                       value={globalRateRmbBdt}
                       onChange={(e) => setGlobalRateRmbBdt(e.target.value)}
-                      placeholder="20.00"
+                      placeholder={liveRates?.cny_to_bdt ? liveRates.cny_to_bdt.toFixed(2) : "20.00"}
                       style={{
                         width: '100%',
                         background: 'rgba(9, 9, 11, 0.75)',
@@ -1390,7 +1387,8 @@ export default function Home() {
                       type="number"
                       min="1"
                       value={globalQuantity}
-                      onChange={(e) => setGlobalQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                      onChange={(e) => setGlobalQuantity(e.target.value)}
+                      placeholder="10"
                       style={{
                         width: '100%',
                         background: 'rgba(9, 9, 11, 0.75)',
@@ -2566,29 +2564,33 @@ export default function Home() {
         {/* Section C: Product List Builder */}
         {searchMode === 'list' && (
           <section style={{ marginBottom: '2rem' }}>
-            <ProductListBuilder
-              items={productListItems}
-              onUpdateItems={setProductListItems}
-              apiUrl={apiUrl}
-              showToast={showToast}
-              defaultRmbRate={liveRates?.cny_to_bdt ? String(liveRates.cny_to_bdt) : globalRateRmbBdt}
-              defaultUsdRate={liveRates?.usd_to_bdt ? String(liveRates.usd_to_bdt) : '121.50'}
-              defaultFreightRate={manualFreightRate || '1.2'}
-              defaultFreightUnit={manualFreightUnit || 'per_gm'}
-              onPitchToCustomers={handlePitchToCustomers}
-            />
+            <ErrorBoundary fallbackTitle="Product List Builder Unavailable">
+              <ProductListBuilder
+                items={productListItems}
+                onUpdateItems={setProductListItems}
+                apiUrl={apiUrl}
+                showToast={showToast}
+                defaultRmbRate={liveRates?.cny_to_bdt ? String(liveRates.cny_to_bdt) : globalRateRmbBdt}
+                defaultUsdRate={liveRates?.usd_to_bdt ? String(liveRates.usd_to_bdt) : '121.50'}
+                defaultFreightRate={manualFreightRate || '1.2'}
+                defaultFreightUnit={manualFreightUnit || 'per_gm'}
+                onPitchToCustomers={handlePitchToCustomers}
+              />
+            </ErrorBoundary>
           </section>
         )}
 
         {/* Section D: Retail Customers & Direct Messaging */}
         {searchMode === 'crm' && (
           <section style={{ marginBottom: '2rem' }}>
-            <CustomerManager
-              apiUrl={apiUrl}
-              productListItems={productListItems}
-              showToast={showToast}
-              initialSelectedProduct={customerManagerProduct}
-            />
+            <ErrorBoundary fallbackTitle="Customer Manager Unavailable">
+              <CustomerManager
+                apiUrl={apiUrl}
+                productListItems={productListItems}
+                showToast={showToast}
+                initialSelectedProduct={customerManagerProduct}
+              />
+            </ErrorBoundary>
           </section>
         )}
       </div>

@@ -2,8 +2,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 import jwt
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
-from backend.app.core.config import settings
+from argon2.exceptions import VerifyMismatchError, InvalidHashError
+from backend.app.core.config import get_settings
 
 ph = PasswordHasher()
 
@@ -17,7 +17,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify plain password against hashed password."""
     try:
         return ph.verify(hashed_password, plain_password)
-    except VerifyMismatchError:
+    except (VerifyMismatchError, InvalidHashError):
         return False
 
 
@@ -27,6 +27,7 @@ def create_access_token(
     expires_delta: Optional[timedelta] = None
 ) -> str:
     """Generate JWT access token with role claims."""
+    settings = get_settings()
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
@@ -47,6 +48,7 @@ def create_access_token(
 
 def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     """Decode and validate JWT access token."""
+    settings = get_settings()
     try:
         payload = jwt.decode(
             token,

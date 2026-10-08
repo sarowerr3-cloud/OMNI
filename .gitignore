@@ -14,7 +14,9 @@ ENV/
 .coverage
 htmlcov/
 *.egg-info/
-.db
+*.db
+*.sqlite
+*.sqlite3
 
 # Node.js / Next.js
 node_modules/

@@ -136,9 +136,18 @@ INITIAL_CUSTOMERS = [
 ]
 
 
+from pathlib import Path
+
+DEFAULT_STORAGE_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+
+
 class CustomerService:
-    def __init__(self, storage_dir: str = "backend/data"):
-        self.storage_file = os.path.join(storage_dir, "customers.json")
+    def __init__(self, storage_dir: Optional[str] = None):
+        if storage_dir is None:
+            resolved_dir = DEFAULT_STORAGE_DIR
+        else:
+            resolved_dir = Path(storage_dir)
+        self.storage_file = str(resolved_dir / "customers.json")
         self._customers: Dict[str, CustomerResponse] = {}
         self._groups: Dict[str, CustomerGroup] = {}
         self._load_data()

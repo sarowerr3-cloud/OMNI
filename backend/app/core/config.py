@@ -1,3 +1,4 @@
+from functools import lru_cache
 from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -39,4 +40,11 @@ class Settings(BaseSettings):
     )
 
 
-settings = Settings()
+@lru_cache()
+def get_settings() -> Settings:
+    """Dependency provider returning cached Settings instance."""
+    return Settings()
+
+
+# Global instance for legacy imports
+settings = get_settings()

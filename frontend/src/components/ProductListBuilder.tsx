@@ -102,19 +102,19 @@ export default function ProductListBuilder({
   defaultFreightUnit,
   onPitchToCustomers
 }: ProductListBuilderProps) {
-  // Top Header Metadata
+  // Top Header Metadata (empty list name by default)
   const getTodayDate = () => new Date().toISOString().split('T')[0];
   
-  const [listName, setListName] = useState<string>('My Sourcing Product List');
+  const [listName, setListName] = useState<string>('');
   const [listDate, setListDate] = useState<string>(getTodayDate());
   const [listNotes, setListNotes] = useState<string>('');
   const [currentListId, setCurrentListId] = useState<string | null>(null);
 
-  // New Item Form State (Sequential Adding)
+  // New Item Form State (Sequential Adding - All boxes empty by default)
   const [newTitle, setNewTitle] = useState<string>('');
   const [newDetails, setNewDetails] = useState<string>('');
-  const [newPrice, setNewPrice] = useState<string>('500');
-  const [newCurrency, setNewCurrency] = useState<'BDT' | 'RMB' | 'USD'>('BDT');
+  const [newPrice, setNewPrice] = useState<string>('');
+  const [newCurrency, setNewCurrency] = useState<'BDT' | 'RMB' | 'USD'>('RMB');
   const [rmbRate, setRmbRate] = useState<string>(defaultRmbRate || '20.00');
   const [usdRate, setUsdRate] = useState<string>(defaultUsdRate || '120.00');
 
@@ -148,14 +148,14 @@ export default function ProductListBuilder({
     }
   }, [defaultFreightUnit]);
   
-  const [newWeightVal, setNewWeightVal] = useState<string>('0.35');
-  const [newWeightUnit, setNewWeightUnit] = useState<'kg' | 'gm'>('kg');
+  const [newWeightVal, setNewWeightVal] = useState<string>('');
+  const [newWeightUnit, setNewWeightUnit] = useState<'kg' | 'gm'>('gm');
   
-  const [newQuantity, setNewQuantity] = useState<number>(1);
+  const [newQuantity, setNewQuantity] = useState<number | string>('');
   const [newProductUrl, setNewProductUrl] = useState<string>('');
   const [newImageUrl, setNewImageUrl] = useState<string>('');
   const [newPlatform, setNewPlatform] = useState<string>('1688');
-  const [newPaidAmount, setNewPaidAmount] = useState<string>('0');
+  const [newPaidAmount, setNewPaidAmount] = useState<string>('');
 
   // Customer Deposit / Advance Modal State
   const [showDepositModal, setShowDepositModal] = useState<boolean>(false);
@@ -251,7 +251,7 @@ export default function ProductListBuilder({
     const priceBdt = calculatePriceBdt(priceNum, newCurrency);
     const weightNum = Math.max(0, Number(newWeightVal) || 0);
     const weightKg = calculateWeightKg(weightNum, newWeightUnit);
-    const qty = Math.max(1, newQuantity || 1);
+    const qty = Math.max(1, Number(newQuantity) || 1);
 
     // Dynamic Weight Price Calculation
     const unitWeightPrice = calculateUnitWeightPriceBdt(weightKg, freightRate, freightUnit);
@@ -289,14 +289,17 @@ export default function ProductListBuilder({
     onUpdateItems([...items, newItem]);
     showToast(`✅ Added "${newItem.title}" (Weight Price: ৳${lineWeightPrice.toFixed(0)}) to product list!`);
 
-    // Reset form
+    // Reset form to empty boxes by default
     setNewTitle('');
     setNewDetails('');
-    setNewPrice('500');
-    setNewPaidAmount('0');
+    setNewPrice('');
+    setNewCurrency('RMB');
+    setNewWeightVal('');
+    setNewWeightUnit('gm');
+    setNewPaidAmount('');
     setNewProductUrl('');
     setNewImageUrl('');
-    setNewQuantity(1);
+    setNewQuantity('');
   };
 
   // Helper calculations for items
@@ -1447,23 +1450,6 @@ export default function ProductListBuilder({
               />
             </div>
 
-            {/* Platform */}
-            <div>
-              <label style={labelStyle}>Platform / Source</label>
-              <select
-                value={newPlatform}
-                onChange={(e) => setNewPlatform(e.target.value)}
-                style={inputStyle}
-              >
-                <option value="1688">1688 China</option>
-                <option value="AliExpress">AliExpress</option>
-                <option value="Pinduoduo">Pinduoduo</option>
-                <option value="Taobao">Taobao</option>
-                <option value="Daraz BD">Daraz BD</option>
-                <option value="Manual">Manual Supplier</option>
-              </select>
-            </div>
-
             {/* Price & Currency */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
@@ -1490,7 +1476,7 @@ export default function ProductListBuilder({
                     min="0"
                     value={newPrice}
                     onChange={(e) => setNewPrice(e.target.value)}
-                    placeholder="Price"
+                    placeholder="Enter price"
                     style={{ ...inputStyle, paddingRight: '28px' }}
                   />
                   <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: '#94a3b8', pointerEvents: 'none', fontWeight: 700 }}>
@@ -1502,8 +1488,8 @@ export default function ProductListBuilder({
                   onChange={(e) => setNewCurrency(e.target.value as any)}
                   style={{ ...inputStyle, width: '95px', backgroundColor: '#18181b', fontWeight: 700 }}
                 >
-                  <option value="BDT">BDT (৳)</option>
                   <option value="RMB">RMB (¥)</option>
+                  <option value="BDT">BDT (৳)</option>
                   <option value="USD">USD ($)</option>
                 </select>
               </div>
@@ -1537,11 +1523,11 @@ export default function ProductListBuilder({
                     </span>
                   </div>
 
-                  {newQuantity > 1 && (
+                  {Number(newQuantity) > 1 && (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', color: '#67e8f9', borderTop: '1px dashed rgba(6, 182, 212, 0.25)', paddingTop: '4px', marginTop: '2px' }}>
                       <span>Batch Total ({newQuantity} units):</span>
                       <span style={{ fontWeight: 800 }}>
-                        ¥{((Number(newPrice) || 0) * newQuantity).toFixed(2)} ≈ ৳{((Number(newPrice) || 0) * (Number(rmbRate) || 20.0) * newQuantity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
+                        ¥{((Number(newPrice) || 0) * (Number(newQuantity) || 1)).toFixed(2)} ≈ ৳{((Number(newPrice) || 0) * (Number(rmbRate) || 20.0) * (Number(newQuantity) || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
                       </span>
                     </div>
                   )}
@@ -1576,18 +1562,18 @@ export default function ProductListBuilder({
                     </span>
                   </div>
 
-                  {newQuantity > 1 && (
+                  {Number(newQuantity) > 1 && (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', color: '#86efac', borderTop: '1px dashed rgba(16, 185, 129, 0.25)', paddingTop: '4px', marginTop: '2px' }}>
                       <span>Batch Total ({newQuantity} units):</span>
                       <span style={{ fontWeight: 800 }}>
-                        ${((Number(newPrice) || 0) * newQuantity).toFixed(2)} ≈ ৳{((Number(newPrice) || 0) * (Number(usdRate) || 120.0) * newQuantity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
+                        ${((Number(newPrice) || 0) * (Number(newQuantity) || 1)).toFixed(2)} ≈ ৳{((Number(newPrice) || 0) * (Number(usdRate) || 120.0) * (Number(newQuantity) || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
                       </span>
                     </div>
                   )}
                 </div>
               )}
 
-              {newCurrency === 'BDT' && newQuantity > 1 && (
+              {newCurrency === 'BDT' && Number(newQuantity) > 1 && (
                 <div
                   style={{
                     marginTop: '6px',
@@ -1597,7 +1583,7 @@ export default function ProductListBuilder({
                     fontWeight: 500
                   }}
                 >
-                  Batch Total ({newQuantity} units): <strong style={{ color: '#f8fafc' }}>৳{((Number(newPrice) || 0) * newQuantity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT</strong>
+                  Batch Total ({newQuantity} units): <strong style={{ color: '#f8fafc' }}>৳{((Number(newPrice) || 0) * (Number(newQuantity) || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT</strong>
                 </div>
               )}
             </div>
@@ -1623,7 +1609,7 @@ export default function ProductListBuilder({
                   min="0"
                   value={newWeightVal}
                   onChange={(e) => setNewWeightVal(e.target.value)}
-                  placeholder="Weight"
+                  placeholder="Weight (gm)"
                   style={{ ...inputStyle, flex: 1 }}
                 />
                 <select
@@ -1631,8 +1617,8 @@ export default function ProductListBuilder({
                   onChange={(e) => setNewWeightUnit(e.target.value as any)}
                   style={{ ...inputStyle, width: '70px', backgroundColor: '#18181b', fontWeight: 700 }}
                 >
-                  <option value="kg">kg</option>
                   <option value="gm">gm</option>
+                  <option value="kg">kg</option>
                 </select>
               </div>
 
@@ -1665,11 +1651,11 @@ export default function ProductListBuilder({
                     </span>
                   </div>
 
-                  {newQuantity > 1 && (
+                  {Number(newQuantity) > 1 && (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', color: '#fde68a', borderTop: '1px dashed rgba(245, 158, 11, 0.25)', paddingTop: '4px', marginTop: '2px' }}>
                       <span>Batch Weight Price ({newQuantity} units):</span>
                       <span style={{ fontWeight: 800 }}>
-                        ৳{(calculateUnitWeightPriceBdt(calculateWeightKg(Number(newWeightVal) || 0, newWeightUnit), freightRate, freightUnit) * newQuantity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
+                        ৳{(calculateUnitWeightPriceBdt(calculateWeightKg(Number(newWeightVal) || 0, newWeightUnit), freightRate, freightUnit) * (Number(newQuantity) || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
                       </span>
                     </div>
                   )}
@@ -1691,7 +1677,8 @@ export default function ProductListBuilder({
                 type="number"
                 min="1"
                 value={newQuantity}
-                onChange={(e) => setNewQuantity(Number(e.target.value))}
+                onChange={(e) => setNewQuantity(e.target.value)}
+                placeholder="1"
                 style={inputStyle}
               />
             </div>
@@ -1762,8 +1749,8 @@ export default function ProductListBuilder({
                   Customer Paid (BDT)
                 </label>
                 <span style={{ fontSize: '0.72rem', color: '#a1a1aa' }}>
-                  Due: <strong style={{ color: Number(newPaidAmount) >= (calculatePriceBdt(Number(newPrice) || 0, newCurrency) * (newQuantity || 1)) ? '#34d399' : '#f87171' }}>
-                    ৳{Math.max(0, (calculatePriceBdt(Number(newPrice) || 0, newCurrency) * (newQuantity || 1)) - (Number(newPaidAmount) || 0)).toLocaleString()}
+                  Due: <strong style={{ color: Number(newPaidAmount) >= (calculatePriceBdt(Number(newPrice) || 0, newCurrency) * (Number(newQuantity) || 1)) ? '#34d399' : '#f87171' }}>
+                    ৳{Math.max(0, (calculatePriceBdt(Number(newPrice) || 0, newCurrency) * (Number(newQuantity) || 1)) - (Number(newPaidAmount) || 0)).toLocaleString()}
                   </strong>
                 </span>
               </div>
@@ -1783,8 +1770,8 @@ export default function ProductListBuilder({
                     const priceBdt = calculatePriceBdt(Number(newPrice) || 0, newCurrency);
                     const weightKg = calculateWeightKg(Number(newWeightVal) || 0, newWeightUnit);
                     const unitWeightPrice = calculateUnitWeightPriceBdt(weightKg, freightRate, freightUnit);
-                    const combinedLineTotal = (priceBdt + unitWeightPrice) * (newQuantity || 1);
-                    const fullAmount = includeWeightInTotal ? combinedLineTotal : priceBdt * (newQuantity || 1);
+                    const combinedLineTotal = (priceBdt + unitWeightPrice) * (Number(newQuantity) || 1);
+                    const fullAmount = includeWeightInTotal ? combinedLineTotal : priceBdt * (Number(newQuantity) || 1);
                     setNewPaidAmount(String(Math.round(fullAmount)));
                   }}
                   title="Set 100% paid (including weight price)"

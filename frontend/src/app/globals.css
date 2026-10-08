@@ -65,8 +65,37 @@ input, select, textarea {
   transition: all 0.2s ease-in-out;
 }
 
+/* Accessibility focus visible rings (WCAG 2.1 AA) */
+:focus-visible {
+  outline: 2px solid var(--omni-red) !important;
+  outline-offset: 2px !important;
+}
+
 input:focus, select:focus, textarea:focus {
-  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.3);
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.4);
+}
+
+/* Screen reader only utility class */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Glassmorphism Card Utilities */

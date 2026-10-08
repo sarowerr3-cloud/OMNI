@@ -23,17 +23,20 @@ export default function NegotiationModal({
   const discount10Pct = (currentRmbPrice * 0.90).toFixed(2);
   const discount15Pct = (currentRmbPrice * 0.85).toFixed(2);
 
-  const [targetPrice, setTargetPrice] = useState<string>(discount10Pct);
-  const [targetQty, setTargetQty] = useState<number>(quantity || 50);
+  const [targetPrice, setTargetPrice] = useState<string>('');
+  const [targetQty, setTargetQty] = useState<number | string>('');
+
+  const effectivePrice = targetPrice || discount10Pct;
+  const effectiveQty = targetQty || quantity || 50;
 
   // Chinese negotiation message templates
   const chineseTemplate = `你好老板！我们是来自孟加拉国（Bangladesh）的专业进口贸易商。
 我们对您店铺的这款【${product.title_original || product.title_en}】非常感兴趣。
 
-我们计划首批采购 ${targetQty} 件作为试单。如果品质合格且交期稳定，我们每个月会有长期大批量的稳定返单。
+我们计划首批采购 ${effectiveQty} 件作为试单。如果品质合格且交期稳定，我们每个月会有长期大批量的稳定返单。
 
 请问：
-1. 首批 ${targetQty} 件单价是否可以优惠到 ¥${targetPrice} /件？
+1. 首批 ${effectiveQty} 件单价是否可以优惠到 ¥${effectivePrice} /件？
 2. 包装规格和现货库存是否充足？交货期大概几天？
 3. 是否支持寄样检测？
 
@@ -150,6 +153,7 @@ export default function NegotiationModal({
                 step="0.5"
                 value={targetPrice}
                 onChange={(e) => setTargetPrice(e.target.value)}
+                placeholder={`e.g. ${discount10Pct}`}
                 style={{ width: '100%', background: '#09090b', border: '1px solid #3f3f46', borderRadius: '6px', padding: '6px 10px', color: '#fff', fontSize: '0.85rem' }}
               />
             </div>
@@ -159,7 +163,8 @@ export default function NegotiationModal({
                 type="number"
                 min="1"
                 value={targetQty}
-                onChange={(e) => setTargetQty(Math.max(1, parseInt(e.target.value) || 1))}
+                onChange={(e) => setTargetQty(e.target.value)}
+                placeholder={String(quantity || 50)}
                 style={{ width: '100%', background: '#09090b', border: '1px solid #3f3f46', borderRadius: '6px', padding: '6px 10px', color: '#fff', fontSize: '0.85rem' }}
               />
             </div>
