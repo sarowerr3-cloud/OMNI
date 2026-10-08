@@ -26,7 +26,13 @@ import {
   Sparkles,
   Layers,
   Info,
-  MessageSquare
+  MessageSquare,
+  Wallet,
+  CreditCard,
+  CheckCheck,
+  RotateCcw,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 
 export interface ProductItem {
@@ -42,6 +48,9 @@ export interface ProductItem {
   product_url?: string;
   platform?: string;
   notes?: string;
+  paid_amount?: number;
+  due_amount?: number;
+  payment_status?: 'paid' | 'partial' | 'unpaid';
 }
 
 export interface SavedProductList {
@@ -53,6 +62,9 @@ export interface SavedProductList {
   total_weight_kg: number;
   total_items_count: number;
   total_quantity: number;
+  total_paid_bdt?: number;
+  total_due_bdt?: number;
+  payment_status?: string;
   notes?: string;
   created_at?: string;
   updated_at?: string;
@@ -113,6 +125,12 @@ export default function ProductListBuilder({
   const [newProductUrl, setNewProductUrl] = useState<string>('');
   const [newImageUrl, setNewImageUrl] = useState<string>('');
   const [newPlatform, setNewPlatform] = useState<string>('1688');
+  const [newPaidAmount, setNewPaidAmount] = useState<string>('0');
+
+  // Customer Deposit / Advance Modal State
+  const [showDepositModal, setShowDepositModal] = useState<boolean>(false);
+  const [depositAmountInput, setDepositAmountInput] = useState<string>('');
+  const [depositStrategy, setDepositStrategy] = useState<'sequential' | 'proportional'>('sequential');
 
   // Image Upload File Reference
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -186,6 +204,11 @@ export default function ProductListBuilder({
     const weightNum = Math.max(0, Number(newWeightVal) || 0);
     const weightKg = calculateWeightKg(weightNum, newWeightUnit);
     const qty = Math.max(1, newQuantity || 1);
+    const lineTotalBdt = priceBdt * qty;
+    const paidNum = Math.max(0, Number(newPaidAmount) || 0);
+    const dueNum = Math.max(0, lineTotalBdt - paidNum);
+    const itemStatus: 'paid' | 'partial' | 'unpaid' =
+      dueNum === 0 && paidNum > 0 ? 'paid' : (paidNum > 0 ? 'partial' : 'unpaid');
 
     const newItem: ProductItem = {
       id: `prod_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -198,7 +221,10 @@ export default function ProductListBuilder({
       quantity: qty,
       product_url: newProductUrl.trim() || undefined,
       image_url: newImageUrl.trim() || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?auto=format&fit=crop&w=400&q=80',
-      platform: newPlatform
+      platform: newPlatform,
+      paid_amount: paidNum,
+      due_amount: dueNum,
+      payment_status: itemStatus
     };
 
     onUpdateItems([...items, newItem]);
@@ -208,9 +234,192 @@ export default function ProductListBuilder({
     setNewTitle('');
     setNewDetails('');
     setNewPrice('500');
+    setNewPaidAmount('0');
     setNewProductUrl('');
     setNewImageUrl('');
     setNewQuantity(1);
+  };
+
+  // Helper calculations for items
+  const getItemLineTotal = (item: ProductItem): number => {
+    return (item.price_bdt || 0) * (item.quantity || 1);
+  };
+
+  const getItemPaid = (item: ProductItem): number => {
+    return Math.max(0, Number(item.paid_amount) || 0);
+  };
+
+  const getItemDue = (item: ProductItem): number => {
+    const lineTotal = getItemLineTotal(item);
+    const paid = getItemPaid(item);
+    return Math.max(0, lineTotal - paid);
+  };
+
+  const getItemStatus = (item: ProductItem): 'paid' | 'partial' | 'unpaid' => {
+    const lineTotal = getItemLineTotal(item);
+    const paid = getItemPaid(item);
+    if (paid >= lineTotal && lineTotal > 0) return 'paid';
+    if (paid > 0) return 'partial';
+    return 'unpaid';
+  };
+
+  // Payment update handlers
+  const handleItemPaidChange = (id: string, newPaid: number) => {
+    const updated = items.map((item) => {
+      if (item.id === id) {
+        const lineTotal = getItemLineTotal(item);
+        const validPaid = Math.max(0, Math.min(lineTotal, newPaid));
+        const due = Math.max(0, lineTotal - validPaid);
+        const status: 'paid' | 'partial' | 'unpaid' =
+          due === 0 && validPaid > 0 ? 'paid' : (validPaid > 0 ? 'partial' : 'unpaid');
+        return {
+          ...item,
+          paid_amount: validPaid,
+          due_amount: due,
+          payment_status: status
+        };
+      }
+      return item;
+    });
+    onUpdateItems(updated);
+  };
+
+  const handleMarkItemPaid = (id: string) => {
+    const updated = items.map((item) => {
+      if (item.id === id) {
+        const lineTotal = getItemLineTotal(item);
+        return {
+          ...item,
+          paid_amount: lineTotal,
+          due_amount: 0,
+          payment_status: 'paid' as const
+        };
+      }
+      return item;
+    });
+    onUpdateItems(updated);
+    showToast('✅ Marked item as fully paid!');
+  };
+
+  const handleResetItemPayment = (id: string) => {
+    const updated = items.map((item) => {
+      if (item.id === id) {
+        const lineTotal = getItemLineTotal(item);
+        return {
+          ...item,
+          paid_amount: 0,
+          due_amount: lineTotal,
+          payment_status: 'unpaid' as const
+        };
+      }
+      return item;
+    });
+    onUpdateItems(updated);
+    showToast('🔄 Item payment reset to unpaid');
+  };
+
+  const handleMarkAllPaid = () => {
+    if (items.length === 0) return;
+    const updated = items.map((item) => {
+      const lineTotal = getItemLineTotal(item);
+      return {
+        ...item,
+        paid_amount: lineTotal,
+        due_amount: 0,
+        payment_status: 'paid' as const
+      };
+    });
+    onUpdateItems(updated);
+    showToast('✅ All items marked as 100% paid!');
+  };
+
+  const handleResetAllPayments = () => {
+    if (items.length === 0) return;
+    if (!confirm('Reset all customer payments to ৳0?')) return;
+    const updated = items.map((item) => {
+      const lineTotal = getItemLineTotal(item);
+      return {
+        ...item,
+        paid_amount: 0,
+        due_amount: lineTotal,
+        payment_status: 'unpaid' as const
+      };
+    });
+    onUpdateItems(updated);
+    showToast('🔄 All payments reset to unpaid');
+  };
+
+  // Customer Deposit / Advance Allocator
+  const handleApplyDeposit = () => {
+    const deposit = Math.max(0, Number(depositAmountInput) || 0);
+    if (deposit <= 0) {
+      showToast('⚠️ Please enter a valid deposit amount greater than 0');
+      return;
+    }
+    if (items.length === 0) {
+      showToast('⚠️ No items in list to apply deposit to');
+      return;
+    }
+
+    let remainingDeposit = deposit;
+    let updated: ProductItem[] = [];
+
+    if (depositStrategy === 'sequential') {
+      // Pay off line 1, then line 2, etc.
+      updated = items.map((item) => {
+        const lineTotal = getItemLineTotal(item);
+        const currentPaid = getItemPaid(item);
+        const remainingItemDue = Math.max(0, lineTotal - currentPaid);
+
+        if (remainingDeposit <= 0) {
+          return item;
+        }
+
+        const allocation = Math.min(remainingItemDue, remainingDeposit);
+        const newPaid = currentPaid + allocation;
+        const newDue = Math.max(0, lineTotal - newPaid);
+        remainingDeposit -= allocation;
+        const status: 'paid' | 'partial' | 'unpaid' = newDue === 0 && newPaid > 0 ? 'paid' : (newPaid > 0 ? 'partial' : 'unpaid');
+
+        return {
+          ...item,
+          paid_amount: newPaid,
+          due_amount: newDue,
+          payment_status: status
+        };
+      });
+    } else {
+      // Proportional allocation based on remaining due
+      const currentRemainingTotalDue = items.reduce((sum, it) => sum + getItemDue(it), 0);
+      if (currentRemainingTotalDue <= 0) {
+        showToast('ℹ️ All items are already fully paid!');
+        setShowDepositModal(false);
+        return;
+      }
+
+      const ratio = Math.min(1, deposit / currentRemainingTotalDue);
+      updated = items.map((item) => {
+        const lineTotal = getItemLineTotal(item);
+        const currentPaid = getItemPaid(item);
+        const currentItemDue = Math.max(0, lineTotal - currentPaid);
+        const addedPaid = Math.round(currentItemDue * ratio);
+        const newPaid = Math.min(lineTotal, currentPaid + addedPaid);
+        const newDue = Math.max(0, lineTotal - newPaid);
+        const status: 'paid' | 'partial' | 'unpaid' = newDue === 0 && newPaid > 0 ? 'paid' : (newPaid > 0 ? 'partial' : 'unpaid');
+        return {
+          ...item,
+          paid_amount: newPaid,
+          due_amount: newDue,
+          payment_status: status
+        };
+      });
+    }
+
+    onUpdateItems(updated);
+    const newTotalPaid = updated.reduce((sum, it) => sum + getItemPaid(it), 0);
+    const newTotalDue = Math.max(0, totalPriceBdt - newTotalPaid);
+    setShowDepositModal(false);
+    showToast(`💰 Applied ৳${deposit.toLocaleString()} deposit! Remaining balance: ৳${newTotalDue.toLocaleString()}`);
   };
 
   // Image Upload File Reader
@@ -251,7 +460,22 @@ export default function ProductListBuilder({
   // Quantity Change
   const handleQuantityChange = (id: string, newQty: number) => {
     const qty = Math.max(1, newQty);
-    const updated = items.map((item) => (item.id === id ? { ...item, quantity: qty } : item));
+    const updated = items.map((item) => {
+      if (item.id === id) {
+        const lineTotal = item.price_bdt * qty;
+        const paid = Math.min(lineTotal, getItemPaid(item));
+        const due = Math.max(0, lineTotal - paid);
+        const status: 'paid' | 'partial' | 'unpaid' = due === 0 && paid > 0 ? 'paid' : (paid > 0 ? 'partial' : 'unpaid');
+        return {
+          ...item,
+          quantity: qty,
+          paid_amount: paid,
+          due_amount: due,
+          payment_status: status
+        };
+      }
+      return item;
+    });
     onUpdateItems(updated);
   };
 
@@ -267,6 +491,11 @@ export default function ProductListBuilder({
         const editedPrice = Math.max(0, editItemState.price ?? item.price);
         const editedCurr = editItemState.currency ?? item.currency;
         const editedPriceBdt = calculatePriceBdt(editedPrice, editedCurr);
+        const editedQty = Math.max(1, editItemState.quantity ?? item.quantity);
+        const lineTotal = editedPriceBdt * editedQty;
+        const paid = Math.min(lineTotal, editItemState.paid_amount ?? getItemPaid(item));
+        const due = Math.max(0, lineTotal - paid);
+        const status: 'paid' | 'partial' | 'unpaid' = due === 0 && paid > 0 ? 'paid' : (paid > 0 ? 'partial' : 'unpaid');
         return {
           ...item,
           ...editItemState,
@@ -274,7 +503,10 @@ export default function ProductListBuilder({
           currency: editedCurr,
           price_bdt: editedPriceBdt,
           weight_kg: Math.max(0, editItemState.weight_kg ?? item.weight_kg),
-          quantity: Math.max(1, editItemState.quantity ?? item.quantity)
+          quantity: editedQty,
+          paid_amount: paid,
+          due_amount: due,
+          payment_status: status
         } as ProductItem;
       }
       return item;
@@ -285,9 +517,11 @@ export default function ProductListBuilder({
   };
 
   // Total Calculations
-  const totalPriceBdt = items.reduce((sum, item) => sum + item.price_bdt * item.quantity, 0);
-  const totalWeightKg = items.reduce((sum, item) => sum + item.weight_kg * item.quantity, 0);
-  const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+  const totalPriceBdt = items.reduce((sum, item) => sum + getItemLineTotal(item), 0);
+  const totalPaidBdt = items.reduce((sum, item) => sum + getItemPaid(item), 0);
+  const totalDueBdt = Math.max(0, totalPriceBdt - totalPaidBdt);
+  const totalWeightKg = items.reduce((sum, item) => sum + (item.weight_kg || 0) * (item.quantity || 1), 0);
+  const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 1), 0);
   const totalItemsCount = items.length;
 
   // Estimated Landed Cost (Total Product Price + Air Freight @ 1200 Tk/kg + 20% Duty/Fees)
@@ -317,7 +551,18 @@ export default function ProductListBuilder({
         name: listName,
         date: listDate,
         notes: listNotes,
-        items
+        items: items.map(it => ({
+          ...it,
+          paid_amount: getItemPaid(it),
+          paid_amount_bdt: getItemPaid(it),
+          due_amount: getItemDue(it),
+          due_amount_bdt: getItemDue(it),
+          payment_status: getItemStatus(it)
+        })),
+        total_price_bdt: totalPriceBdt,
+        total_paid_bdt: totalPaidBdt,
+        total_due_bdt: totalDueBdt,
+        payment_status: totalDueBdt === 0 && totalPriceBdt > 0 ? 'paid' : (totalPaidBdt > 0 ? 'partial' : 'unpaid')
       };
 
       let res;
@@ -373,7 +618,25 @@ export default function ProductListBuilder({
     setListName(saved.name);
     setListDate(saved.date);
     setListNotes(saved.notes || '');
-    onUpdateItems(saved.items || []);
+
+    const loadedItems: ProductItem[] = (saved.items || []).map((it) => {
+      const paid = Number(it.paid_amount ?? (it as any).paid_amount_bdt) || 0;
+      const lineTotal = (it.price_bdt || 0) * (it.quantity || 1);
+      const due = typeof it.due_amount === 'number' 
+        ? it.due_amount 
+        : (typeof (it as any).due_amount_bdt === 'number' 
+            ? (it as any).due_amount_bdt 
+            : Math.max(0, lineTotal - paid));
+      const status = (it.payment_status as any) || (due === 0 && paid > 0 ? 'paid' : (paid > 0 ? 'partial' : 'unpaid'));
+      return {
+        ...it,
+        paid_amount: paid,
+        due_amount: due,
+        payment_status: status
+      };
+    });
+
+    onUpdateItems(loadedItems);
     setShowSavedModal(false);
     showToast(`📂 Loaded list: "${saved.name}"`);
   };
@@ -391,7 +654,7 @@ export default function ProductListBuilder({
     }
   };
 
-  // Share Summary Text
+  // Share Summary Text with Paid & Due tracking
   const handleShareSummary = () => {
     if (items.length === 0) {
       showToast('⚠️ Add items to list before sharing!');
@@ -399,42 +662,71 @@ export default function ProductListBuilder({
     }
 
     const lines = [
-      `📋 PRODUCT SOURCING LIST: ${listName}`,
+      `📋 PRODUCT SOURCING & CUSTOMER PAYMENT SUMMARY: ${listName}`,
       `📅 Date: ${listDate}`,
       `----------------------------------------`,
-      ...items.map((it, i) => 
-        `${i + 1}. ${it.title} (${it.quantity} pcs)\n   Price: ৳${it.price_bdt.toLocaleString()} | Weight: ${it.weight_kg} kg\n   Link: ${it.product_url || 'N/A'}`
-      ),
+      ...items.map((it, i) => {
+        const lineTotal = getItemLineTotal(it);
+        const paid = getItemPaid(it);
+        const due = getItemDue(it);
+        const status = getItemStatus(it).toUpperCase();
+        return `${i + 1}. ${it.title} (${it.quantity} pcs)\n   Line Total: ৳${lineTotal.toLocaleString()} | Paid: ৳${paid.toLocaleString()} | Due: ৳${due.toLocaleString()} [${status}]\n   Link: ${it.product_url || 'N/A'}`;
+      }),
       `----------------------------------------`,
       `📦 Total Items: ${totalItemsCount} (${totalQuantity} pcs)`,
       `⚖️ TOTAL WEIGHT: ${totalWeightKg.toFixed(3)} kg`,
-      `💰 TOTAL PRICE: ৳${totalPriceBdt.toLocaleString()} BDT`,
+      `💰 TOTAL ORDER: ৳${totalPriceBdt.toLocaleString()} BDT`,
+      `✅ TOTAL CUSTOMER PAID: ৳${totalPaidBdt.toLocaleString()} BDT`,
+      `⚠️ OUTSTANDING CUSTOMER DUE: ৳${totalDueBdt.toLocaleString()} BDT`,
       listNotes ? `📝 Notes: ${listNotes}` : ''
     ];
 
     navigator.clipboard.writeText(lines.filter(Boolean).join('\n'));
-    showToast('📋 Sourcing summary copied to clipboard!');
+    showToast('📋 Sourcing & payment summary copied to clipboard!');
   };
 
-  // Export CSV
+  // Export CSV with Paid & Due tracking
   const handleExportCsv = () => {
     if (items.length === 0) {
       showToast('⚠️ No items to export!');
       return;
     }
-    const headers = ['#', 'Product Title', 'Platform', 'Unit Price (BDT)', 'Quantity', 'Line Total (BDT)', 'Unit Weight (kg)', 'Line Weight (kg)', 'Product Link', 'Details'];
-    const rows = items.map((it, idx) => [
-      idx + 1,
-      `"${it.title.replace(/"/g, '""')}"`,
-      `"${it.platform || 'N/A'}"`,
-      it.price_bdt,
-      it.quantity,
-      it.price_bdt * it.quantity,
-      it.weight_kg,
-      (it.weight_kg * it.quantity).toFixed(3),
-      `"${it.product_url || ''}"`,
-      `"${(it.details || '').replace(/"/g, '""')}"`
-    ]);
+    const headers = [
+      '#', 
+      'Product Title', 
+      'Platform', 
+      'Unit Price (BDT)', 
+      'Quantity', 
+      'Line Total (BDT)', 
+      'Paid Amount (BDT)', 
+      'Due Amount (BDT)', 
+      'Payment Status', 
+      'Unit Weight (kg)', 
+      'Line Weight (kg)', 
+      'Product Link', 
+      'Details'
+    ];
+    const rows = items.map((it, idx) => {
+      const lineTotal = getItemLineTotal(it);
+      const paid = getItemPaid(it);
+      const due = getItemDue(it);
+      const status = getItemStatus(it);
+      return [
+        idx + 1,
+        `"${it.title.replace(/"/g, '""')}"`,
+        `"${it.platform || 'N/A'}"`,
+        it.price_bdt,
+        it.quantity,
+        lineTotal,
+        paid,
+        due,
+        `"${status.toUpperCase()}"`,
+        it.weight_kg,
+        (it.weight_kg * it.quantity).toFixed(3),
+        `"${it.product_url || ''}"`,
+        `"${(it.details || '').replace(/"/g, '""')}"`
+      ];
+    });
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
@@ -444,7 +736,7 @@ export default function ProductListBuilder({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast('📊 CSV file downloaded!');
+    showToast('📊 CSV file downloaded with Paid & Due tracking!');
   };
 
   // Export A4 PDF Download
@@ -699,7 +991,7 @@ export default function ProductListBuilder({
         {/* ------------------------------------------------------------- */}
         {/* LIVE TOTAL STATS DASHBOARD SUMMARY BAR */}
         {/* ------------------------------------------------------------- */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginTop: '1.25rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginTop: '1.25rem' }}>
           
           {/* Card 1: Total Items */}
           <div style={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -733,7 +1025,7 @@ export default function ProductListBuilder({
               <Coins style={{ width: '24px', height: '24px' }} />
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Total Product Price</div>
+              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Total Order Value</div>
               <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#34d399' }}>
                 ৳{totalPriceBdt.toLocaleString()} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>BDT</span>
               </div>
@@ -753,7 +1045,133 @@ export default function ProductListBuilder({
             </div>
           </div>
 
+          {/* Card 5: Total Customer Paid */}
+          <div style={{ backgroundColor: '#09090b', border: '1px solid rgba(16, 185, 129, 0.4)', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(16, 185, 129, 0.18)', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#34d399' }}>
+              <Wallet style={{ width: '24px', height: '24px' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: '#34d399', fontWeight: 700, textTransform: 'uppercase' }}>Total Customer Paid</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#34d399' }}>
+                ৳{totalPaidBdt.toLocaleString()} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>BDT</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 6: Outstanding Customer Due */}
+          <div style={{ backgroundColor: '#09090b', border: `1px solid ${totalDueBdt > 0 ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.3)'}`, borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: totalDueBdt > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)', border: `1px solid ${totalDueBdt > 0 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`, color: totalDueBdt > 0 ? '#f87171' : '#34d399' }}>
+              {totalDueBdt > 0 ? <AlertCircle style={{ width: '24px', height: '24px' }} /> : <CheckCircle2 style={{ width: '24px', height: '24px' }} />}
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: totalDueBdt > 0 ? '#f87171' : '#34d399', fontWeight: 700, textTransform: 'uppercase' }}>Outstanding Due</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: totalDueBdt > 0 ? '#f87171' : '#34d399' }}>
+                ৳{totalDueBdt.toLocaleString()} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>BDT</span>
+              </div>
+            </div>
+          </div>
+
         </div>
+
+        {/* Payment Quick Actions Bar */}
+        {items.length > 0 && (
+          <div
+            style={{
+              marginTop: '1rem',
+              padding: '10px 14px',
+              backgroundColor: '#09090b',
+              border: '1px solid #27272a',
+              borderRadius: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '10px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <Wallet style={{ width: '18px', height: '18px', color: '#10b981' }} />
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffffff' }}>Customer Payment Status:</span>
+              <span style={{ fontSize: '0.8rem', padding: '2px 8px', borderRadius: '6px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#34d399', fontWeight: 800, border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                ৳{totalPaidBdt.toLocaleString()} Paid ({totalPriceBdt > 0 ? Math.round((totalPaidBdt / totalPriceBdt) * 100) : 0}%)
+              </span>
+              <span style={{ fontSize: '0.8rem', padding: '2px 8px', borderRadius: '6px', backgroundColor: totalDueBdt > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)', color: totalDueBdt > 0 ? '#f87171' : '#34d399', fontWeight: 800, border: totalDueBdt > 0 ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)' }}>
+                {totalDueBdt > 0 ? `৳${totalDueBdt.toLocaleString()} Due` : 'All Paid ✓'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setDepositAmountInput(String(totalDueBdt > 0 ? totalDueBdt : ''));
+                  setShowDepositModal(true);
+                }}
+                title="Record customer advance payment and distribute across items"
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                  border: '1px solid rgba(56, 189, 248, 0.4)',
+                  color: '#38bdf8',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <CreditCard style={{ width: '14px', height: '14px' }} />
+                <span>Record Customer Deposit</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleMarkAllPaid}
+                title="Mark 100% of all items as paid"
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                  color: '#34d399',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <CheckCheck style={{ width: '14px', height: '14px' }} />
+                <span>Mark All Paid</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetAllPayments}
+                title="Reset all payments to 0 (all due)"
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  color: '#f87171',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <RotateCcw style={{ width: '13px', height: '13px' }} />
+                <span>Reset</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ------------------------------------------------------------- */}
         {/* ADD PRODUCT FORM (SEQUENTIAL ENTRY) */}
@@ -1035,6 +1453,56 @@ export default function ProductListBuilder({
               />
             </div>
 
+            {/* Initial Customer Paid Amount */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>
+                  <Wallet style={{ width: '14px', height: '14px', color: '#34d399' }} />
+                  Customer Paid (BDT)
+                </label>
+                <span style={{ fontSize: '0.72rem', color: '#a1a1aa' }}>
+                  Due: <strong style={{ color: Number(newPaidAmount) >= (calculatePriceBdt(Number(newPrice) || 0, newCurrency) * (newQuantity || 1)) ? '#34d399' : '#f87171' }}>
+                    ৳{Math.max(0, (calculatePriceBdt(Number(newPrice) || 0, newCurrency) * (newQuantity || 1)) - (Number(newPaidAmount) || 0)).toLocaleString()}
+                  </strong>
+                </span>
+              </div>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={newPaidAmount}
+                  onChange={(e) => setNewPaidAmount(e.target.value)}
+                  placeholder="0"
+                  style={{ ...inputStyle, paddingRight: '60px' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const lineTotal = calculatePriceBdt(Number(newPrice) || 0, newCurrency) * (newQuantity || 1);
+                    setNewPaidAmount(String(lineTotal));
+                  }}
+                  title="Set 100% paid"
+                  style={{
+                    position: 'absolute',
+                    right: '6px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    padding: '3px 8px',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    backgroundColor: '#27272a',
+                    color: '#34d399',
+                    border: '1px solid #3f3f46',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Full
+                </button>
+              </div>
+            </div>
+
             {/* Submit Button */}
             <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
               <button
@@ -1095,6 +1563,9 @@ export default function ProductListBuilder({
               {items.map((item, index) => {
                 const lineTotalBdt = item.price_bdt * item.quantity;
                 const lineTotalWeightKg = item.weight_kg * item.quantity;
+                const itemPaid = getItemPaid(item);
+                const itemDue = getItemDue(item);
+                const itemStatus = getItemStatus(item);
 
                 return (
                   <div
@@ -1211,6 +1682,131 @@ export default function ProductListBuilder({
                         </div>
                       </div>
 
+                      {/* Customer Payment & Due Box */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          backgroundColor: '#18181b',
+                          border: `1px solid ${itemStatus === 'paid' ? 'rgba(16, 185, 129, 0.4)' : itemStatus === 'partial' ? 'rgba(245, 158, 11, 0.4)' : '#27272a'}`,
+                          borderRadius: '10px',
+                          padding: '6px 10px'
+                        }}
+                      >
+                        {/* Status Badge */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                          <span
+                            style={{
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              fontSize: '0.68rem',
+                              fontWeight: 800,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px',
+                              textAlign: 'center',
+                              backgroundColor:
+                                itemStatus === 'paid'
+                                  ? 'rgba(16, 185, 129, 0.15)'
+                                  : itemStatus === 'partial'
+                                  ? 'rgba(245, 158, 11, 0.15)'
+                                  : 'rgba(239, 68, 68, 0.12)',
+                              color:
+                                itemStatus === 'paid'
+                                  ? '#34d399'
+                                  : itemStatus === 'partial'
+                                  ? '#fbbf24'
+                                  : '#f87171',
+                              border:
+                                itemStatus === 'paid'
+                                  ? '1px solid rgba(16, 185, 129, 0.3)'
+                                  : itemStatus === 'partial'
+                                  ? '1px solid rgba(245, 158, 11, 0.3)'
+                                  : '1px solid rgba(239, 68, 68, 0.25)'
+                            }}
+                          >
+                            {itemStatus === 'paid' ? 'PAID ✓' : itemStatus === 'partial' ? 'PARTIAL' : 'UNPAID'}
+                          </span>
+                        </div>
+
+                        {/* Paid Input */}
+                        <div>
+                          <div style={{ fontSize: '0.62rem', textTransform: 'uppercase', fontWeight: 700, color: '#a1a1aa' }}>
+                            Customer Paid
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                            <div style={{ position: 'relative' }}>
+                              <input
+                                type="number"
+                                min="0"
+                                max={lineTotalBdt}
+                                step="1"
+                                value={itemPaid}
+                                onChange={(e) => handleItemPaidChange(item.id, Number(e.target.value) || 0)}
+                                style={{
+                                  width: '90px',
+                                  backgroundColor: '#09090b',
+                                  border: '1px solid #3f3f46',
+                                  borderRadius: '6px',
+                                  padding: '4px 6px',
+                                  fontSize: '0.8rem',
+                                  fontWeight: 700,
+                                  color: '#34d399',
+                                  outline: 'none'
+                                }}
+                              />
+                              <span style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.68rem', color: '#71717a', pointerEvents: 'none' }}>
+                                ৳
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleMarkItemPaid(item.id)}
+                              title="Mark this item fully paid"
+                              style={{
+                                padding: '4px 6px',
+                                borderRadius: '5px',
+                                backgroundColor: '#27272a',
+                                color: '#34d399',
+                                border: '1px solid #3f3f46',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Full
+                            </button>
+                            {itemPaid > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => handleResetItemPayment(item.id)}
+                                title="Reset payment"
+                                style={{
+                                  padding: '4px',
+                                  borderRadius: '5px',
+                                  backgroundColor: 'transparent',
+                                  color: '#f87171',
+                                  border: 'none',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <X style={{ width: '12px', height: '12px' }} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Due Display */}
+                        <div style={{ textAlign: 'right', minWidth: '75px' }}>
+                          <div style={{ fontSize: '0.62rem', textTransform: 'uppercase', fontWeight: 700, color: '#a1a1aa' }}>
+                            Customer Due
+                          </div>
+                          <div style={{ fontSize: '0.88rem', fontWeight: 800, color: itemDue > 0 ? '#f87171' : '#34d399', marginTop: '2px' }}>
+                            ৳{itemDue.toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Reorder & Remove Buttons */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <button
@@ -1312,6 +1908,16 @@ export default function ProductListBuilder({
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#34d399' }}>৳{list.total_price_bdt.toLocaleString()}</div>
+                        {typeof list.total_paid_bdt === 'number' && (
+                          <div style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 700 }}>
+                            Paid: ৳{list.total_paid_bdt.toLocaleString()}
+                          </div>
+                        )}
+                        {typeof list.total_due_bdt === 'number' && list.total_due_bdt > 0 && (
+                          <div style={{ fontSize: '0.7rem', color: '#f87171', fontWeight: 700 }}>
+                            Due: ৳{list.total_due_bdt.toLocaleString()}
+                          </div>
+                        )}
                         <div style={{ fontSize: '0.75rem', color: '#fbbf24' }}>{list.total_weight_kg} kg</div>
                       </div>
 
@@ -1326,6 +1932,162 @@ export default function ProductListBuilder({
                 ))}
               </div>
             )}
+
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* 💳 RECORD CUSTOMER DEPOSIT / ADVANCE MODAL */}
+      {/* ------------------------------------------------------------- */}
+      {showDepositModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '16px', maxWidth: '520px', width: '100%', padding: '1.5rem', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }}>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid #27272a', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8' }}>
+                  <CreditCard style={{ width: '20px', height: '20px' }} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+                    Record Customer Advance / Deposit
+                  </h3>
+                  <p style={{ fontSize: '0.75rem', color: '#a1a1aa', margin: '2px 0 0 0' }}>
+                    Allocate advance payment across product line items
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDepositModal(false)}
+                style={{ padding: '6px', backgroundColor: '#27272a', border: 'none', borderRadius: '8px', color: '#a1a1aa', cursor: 'pointer' }}
+              >
+                <X style={{ width: '18px', height: '18px' }} />
+              </button>
+            </div>
+
+            {/* Quick Metrics */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '1rem' }}>
+              <div style={{ backgroundColor: '#09090b', padding: '8px 10px', borderRadius: '8px', border: '1px solid #27272a' }}>
+                <div style={{ fontSize: '0.65rem', color: '#a1a1aa', textTransform: 'uppercase', fontWeight: 700 }}>Total Order</div>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#ffffff', marginTop: '2px' }}>৳{totalPriceBdt.toLocaleString()}</div>
+              </div>
+              <div style={{ backgroundColor: '#09090b', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                <div style={{ fontSize: '0.65rem', color: '#34d399', textTransform: 'uppercase', fontWeight: 700 }}>Current Paid</div>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#34d399', marginTop: '2px' }}>৳{totalPaidBdt.toLocaleString()}</div>
+              </div>
+              <div style={{ backgroundColor: '#09090b', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                <div style={{ fontSize: '0.65rem', color: '#f87171', textTransform: 'uppercase', fontWeight: 700 }}>Current Due</div>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#f87171', marginTop: '2px' }}>৳{totalDueBdt.toLocaleString()}</div>
+              </div>
+            </div>
+
+            {/* Deposit Input */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={labelStyle}>
+                <Wallet style={{ width: '14px', height: '14px', color: '#38bdf8' }} />
+                Customer Deposit Amount (BDT) <span style={{ color: '#dc2626' }}>*</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={depositAmountInput}
+                  onChange={(e) => setDepositAmountInput(e.target.value)}
+                  placeholder="e.g. 5000"
+                  style={{ ...inputStyle, fontSize: '1.1rem', fontWeight: 800, paddingLeft: '28px', color: '#38bdf8', border: '1px solid #38bdf8' }}
+                />
+                <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '1rem', color: '#38bdf8', pointerEvents: 'none', fontWeight: 800 }}>
+                  ৳
+                </span>
+              </div>
+
+              {/* Quick Presets */}
+              <div style={{ display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setDepositAmountInput(String(totalDueBdt))}
+                  style={{ padding: '4px 10px', borderRadius: '6px', backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#34d399', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Pay Full Balance (৳{totalDueBdt.toLocaleString()})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDepositAmountInput(String(Math.round(totalPriceBdt * 0.5)))}
+                  style={{ padding: '4px 10px', borderRadius: '6px', backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#60a5fa', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  50% Advance (৳{Math.round(totalPriceBdt * 0.5).toLocaleString()})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDepositAmountInput(String(Math.round(totalPriceBdt * 0.3)))}
+                  style={{ padding: '4px 10px', borderRadius: '6px', backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#fbbf24', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  30% Advance (৳{Math.round(totalPriceBdt * 0.3).toLocaleString()})
+                </button>
+              </div>
+            </div>
+
+            {/* Allocation Strategy */}
+            <div style={{ marginBottom: '1.25rem', backgroundColor: '#09090b', padding: '10px 12px', borderRadius: '8px', border: '1px solid #27272a' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '8px' }}>
+                Allocation Mode:
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: '#f8fafc' }}>
+                  <input
+                    type="radio"
+                    name="allocation_strategy"
+                    checked={depositStrategy === 'sequential'}
+                    onChange={() => setDepositStrategy('sequential')}
+                  />
+                  <span><strong>Sequential:</strong> Clear items top-to-bottom in order</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: '#f8fafc' }}>
+                  <input
+                    type="radio"
+                    name="allocation_strategy"
+                    checked={depositStrategy === 'proportional'}
+                    onChange={() => setDepositStrategy('proportional')}
+                  />
+                  <span><strong>Proportional:</strong> Distribute evenly based on item price</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Modal Action Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setShowDepositModal(false)}
+                style={{ ...buttonActionStyle, backgroundColor: 'transparent' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleApplyDeposit}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '10px',
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: '#ffffff',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                  boxShadow: '0 0 15px rgba(16, 185, 129, 0.4)'
+                }}
+              >
+                <CheckCheck style={{ width: '16px', height: '16px' }} />
+                <span>Apply Customer Deposit</span>
+              </button>
+            </div>
 
           </div>
         </div>
@@ -1355,7 +2117,7 @@ export default function ProductListBuilder({
                   OMNI SOURCING PRODUCT LIST
                 </h1>
                 <p style={{ fontSize: '11px', color: '#4b5563', margin: '4px 0 0 0' }}>
-                  Product Sourcing, Weight & Landed Cost Statement
+                  Product Sourcing, Weight & Payment Statement
                 </p>
               </div>
               <div style={{ textAlign: 'right' }}>
@@ -1376,104 +2138,157 @@ export default function ProductListBuilder({
             </div>
           )}
 
-          {/* Summary Box Header */}
-          <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-            <div style={{ flex: 1, backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px', textAlign: 'center' }}>
-              <div style={{ fontSize: '10px', color: '#1e40af', textTransform: 'uppercase', fontWeight: 'bold' }}>Total Products</div>
-              <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1d4ed8', marginTop: '2px' }}>
-                {totalItemsCount} <span style={{ fontSize: '11px', fontWeight: 'normal' }}>({totalQuantity} units)</span>
+          {/* Summary Box Header (5 boxes including Paid & Due) */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            <div style={{ flex: 1, backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '9px', color: '#1e40af', textTransform: 'uppercase', fontWeight: 'bold' }}>Products</div>
+              <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1d4ed8', marginTop: '2px' }}>
+                {totalItemsCount} <span style={{ fontSize: '10px', fontWeight: 'normal' }}>({totalQuantity} pcs)</span>
               </div>
             </div>
 
-            <div style={{ flex: 1, backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', padding: '10px', textAlign: 'center' }}>
-              <div style={{ fontSize: '10px', color: '#92400e', textTransform: 'uppercase', fontWeight: 'bold' }}>Total Weight (kg)</div>
-              <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#b45309', marginTop: '2px' }}>
+            <div style={{ flex: 1, backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '9px', color: '#92400e', textTransform: 'uppercase', fontWeight: 'bold' }}>Total Weight</div>
+              <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', marginTop: '2px' }}>
                 {totalWeightKg.toFixed(3)} kg
               </div>
             </div>
 
-            <div style={{ flex: 1, backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '6px', padding: '10px', textAlign: 'center' }}>
-              <div style={{ fontSize: '10px', color: '#065f46', textTransform: 'uppercase', fontWeight: 'bold' }}>Total Price (BDT)</div>
-              <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#047857', marginTop: '2px' }}>
+            <div style={{ flex: 1, backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '9px', color: '#334155', textTransform: 'uppercase', fontWeight: 'bold' }}>Order Value</div>
+              <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#0f172a', marginTop: '2px' }}>
                 ৳{totalPriceBdt.toLocaleString()}
               </div>
             </div>
+
+            <div style={{ flex: 1, backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '9px', color: '#065f46', textTransform: 'uppercase', fontWeight: 'bold' }}>Customer Paid</div>
+              <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#047857', marginTop: '2px' }}>
+                ৳{totalPaidBdt.toLocaleString()}
+              </div>
+            </div>
+
+            <div style={{ flex: 1, backgroundColor: totalDueBdt > 0 ? '#fef2f2' : '#ecfdf5', border: `1px solid ${totalDueBdt > 0 ? '#fecaca' : '#a7f3d0'}`, borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '9px', color: totalDueBdt > 0 ? '#991b1b' : '#065f46', textTransform: 'uppercase', fontWeight: 'bold' }}>Customer Due</div>
+              <div style={{ fontSize: '14px', fontWeight: 'bold', color: totalDueBdt > 0 ? '#b91c1c' : '#047857', marginTop: '2px' }}>
+                ৳{totalDueBdt.toLocaleString()}
+              </div>
+            </div>
           </div>
 
-          {/* Products Table */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px', marginBottom: '20px' }}>
+          {/* Products Table with Paid & Due */}
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9px', marginBottom: '20px' }}>
             <thead>
               <tr style={{ backgroundColor: '#1f2937', color: '#ffffff', textAlign: 'left' }}>
-                <th style={{ padding: '8px', width: '25px' }}>#</th>
-                <th style={{ padding: '8px', width: '50px' }}>Image</th>
-                <th style={{ padding: '8px' }}>Product Details</th>
-                <th style={{ padding: '8px', width: '70px' }}>Source Link</th>
-                <th style={{ padding: '8px', textAlign: 'right', width: '60px' }}>Unit Price</th>
-                <th style={{ padding: '8px', textAlign: 'center', width: '35px' }}>Qty</th>
-                <th style={{ padding: '8px', textAlign: 'right', width: '65px' }}>Line Total</th>
-                <th style={{ padding: '8px', textAlign: 'right', width: '60px' }}>Weight</th>
+                <th style={{ padding: '6px', width: '20px' }}>#</th>
+                <th style={{ padding: '6px', width: '38px' }}>Image</th>
+                <th style={{ padding: '6px' }}>Product Details</th>
+                <th style={{ padding: '6px', width: '60px' }}>Source Link</th>
+                <th style={{ padding: '6px', textAlign: 'right', width: '50px' }}>Unit Price</th>
+                <th style={{ padding: '6px', textAlign: 'center', width: '25px' }}>Qty</th>
+                <th style={{ padding: '6px', textAlign: 'right', width: '55px' }}>Line Total</th>
+                <th style={{ padding: '6px', textAlign: 'right', width: '50px' }}>Paid (BDT)</th>
+                <th style={{ padding: '6px', textAlign: 'right', width: '50px' }}>Due (BDT)</th>
+                <th style={{ padding: '6px', textAlign: 'center', width: '45px' }}>Status</th>
+                <th style={{ padding: '6px', textAlign: 'right', width: '45px' }}>Weight</th>
               </tr>
             </thead>
             <tbody>
-              {items.map((item, idx) => (
-                <tr key={item.id} style={{ borderBottom: '1px solid #e5e7eb', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#f9fafb' }}>
-                  <td style={{ padding: '8px', fontWeight: 'bold', textAlign: 'center' }}>{idx + 1}</td>
-                  <td style={{ padding: '8px' }}>
-                    {item.image_url ? (
-                      <img src={item.image_url} alt="" style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
-                    ) : (
-                      <div style={{ width: '40px', height: '40px', backgroundColor: '#e5e7eb', borderRadius: '4px' }} />
-                    )}
-                  </td>
-                  <td style={{ padding: '8px' }}>
-                    <div style={{ fontWeight: 'bold', color: '#111827', fontSize: '11px' }}>{item.title}</div>
-                    {item.details && <div style={{ color: '#4b5563', fontSize: '9px', marginTop: '2px' }}>{item.details}</div>}
-                    {item.platform && <div style={{ color: '#dc2626', fontSize: '8px', textTransform: 'uppercase', fontWeight: 'bold', marginTop: '2px' }}>Platform: {item.platform}</div>}
-                  </td>
-                  <td style={{ padding: '8px', wordBreak: 'break-all' }}>
-                    {item.product_url ? (
-                      <a href={item.product_url} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', textDecoration: 'underline' }}>
-                        View Link
-                      </a>
-                    ) : (
-                      <span style={{ color: '#9ca3af' }}>N/A</span>
-                    )}
-                  </td>
-                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: '500' }}>
-                    {item.currency !== 'BDT' ? `${item.currency === 'RMB' ? '¥' : '$'}${item.price} (৳${item.price_bdt.toLocaleString()})` : `৳${item.price_bdt.toLocaleString()}`}
-                  </td>
-                  <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>{item.quantity}</td>
-                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold', color: '#047857' }}>
-                    ৳{(item.price_bdt * item.quantity).toLocaleString()}
-                  </td>
-                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold', color: '#b45309' }}>
-                    {(item.weight_kg * item.quantity).toFixed(3)} kg
-                  </td>
-                </tr>
-              ))}
+              {items.map((item, idx) => {
+                const lineTotal = getItemLineTotal(item);
+                const paid = getItemPaid(item);
+                const due = getItemDue(item);
+                const status = getItemStatus(item);
+
+                return (
+                  <tr key={item.id} style={{ borderBottom: '1px solid #e5e7eb', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#f9fafb' }}>
+                    <td style={{ padding: '6px', fontWeight: 'bold', textAlign: 'center' }}>{idx + 1}</td>
+                    <td style={{ padding: '6px' }}>
+                      {item.image_url ? (
+                        <img src={item.image_url} alt="" style={{ width: '34px', height: '34px', objectFit: 'cover', borderRadius: '4px' }} />
+                      ) : (
+                        <div style={{ width: '34px', height: '34px', backgroundColor: '#e5e7eb', borderRadius: '4px' }} />
+                      )}
+                    </td>
+                    <td style={{ padding: '6px' }}>
+                      <div style={{ fontWeight: 'bold', color: '#111827', fontSize: '10px' }}>{item.title}</div>
+                      {item.details && <div style={{ color: '#4b5563', fontSize: '8px', marginTop: '1px' }}>{item.details}</div>}
+                      {item.platform && <div style={{ color: '#dc2626', fontSize: '7.5px', textTransform: 'uppercase', fontWeight: 'bold', marginTop: '1px' }}>Platform: {item.platform}</div>}
+                    </td>
+                    <td style={{ padding: '6px', wordBreak: 'break-all' }}>
+                      {item.product_url ? (
+                        <a href={item.product_url} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', textDecoration: 'underline' }}>
+                          View Link
+                        </a>
+                      ) : (
+                        <span style={{ color: '#9ca3af' }}>N/A</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: '500' }}>
+                      {item.currency !== 'BDT' ? `${item.currency === 'RMB' ? '¥' : '$'}${item.price} (৳${item.price_bdt.toLocaleString()})` : `৳${item.price_bdt.toLocaleString()}`}
+                    </td>
+                    <td style={{ padding: '6px', textAlign: 'center', fontWeight: 'bold' }}>{item.quantity}</td>
+                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: '#111827' }}>
+                      ৳{lineTotal.toLocaleString()}
+                    </td>
+                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: '#047857' }}>
+                      ৳{paid.toLocaleString()}
+                    </td>
+                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: due > 0 ? '#b91c1c' : '#047857' }}>
+                      ৳{due.toLocaleString()}
+                    </td>
+                    <td style={{ padding: '6px', textAlign: 'center' }}>
+                      <span
+                        style={{
+                          fontSize: '7.5px',
+                          padding: '2px 4px',
+                          borderRadius: '3px',
+                          fontWeight: 'bold',
+                          textTransform: 'uppercase',
+                          backgroundColor: status === 'paid' ? '#dcfce7' : status === 'partial' ? '#fef3c7' : '#fee2e2',
+                          color: status === 'paid' ? '#166534' : status === 'partial' ? '#92400e' : '#991b1b'
+                        }}
+                      >
+                        {status}
+                      </span>
+                    </td>
+                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: '#b45309' }}>
+                      {(item.weight_kg * item.quantity).toFixed(3)} kg
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
-          {/* Grand Totals Footer */}
-          <div style={{ backgroundColor: '#111827', color: '#ffffff', borderRadius: '8px', padding: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {/* Grand Totals Footer with Paid & Due */}
+          <div style={{ backgroundColor: '#111827', color: '#ffffff', borderRadius: '8px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ fontSize: '12px', fontWeight: 'bold' }}>GRAND TOTAL SUMMARY</div>
-              <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px' }}>Formatted for A4 Standard Paper</div>
+              <div style={{ fontSize: '11px', fontWeight: 'bold' }}>GRAND TOTAL STATEMENT</div>
+              <div style={{ fontSize: '9px', color: '#9ca3af', marginTop: '2px' }}>Formatted for A4 Standard Paper</div>
             </div>
-            <div style={{ display: 'flex', gap: '20px', textAlign: 'right' }}>
+            <div style={{ display: 'flex', gap: '16px', textAlign: 'right' }}>
               <div>
-                <div style={{ fontSize: '10px', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 'bold' }}>TOTAL WEIGHT</div>
-                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#fbbf24' }}>{totalWeightKg.toFixed(3)} kg</div>
+                <div style={{ fontSize: '9px', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 'bold' }}>TOTAL WEIGHT</div>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#fbbf24' }}>{totalWeightKg.toFixed(3)} kg</div>
               </div>
               <div>
-                <div style={{ fontSize: '10px', color: '#10b981', textTransform: 'uppercase', fontWeight: 'bold' }}>TOTAL PRICE</div>
-                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#34d399' }}>৳{totalPriceBdt.toLocaleString()} BDT</div>
+                <div style={{ fontSize: '9px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 'bold' }}>TOTAL ORDER</div>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>৳{totalPriceBdt.toLocaleString()} BDT</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '9px', color: '#34d399', textTransform: 'uppercase', fontWeight: 'bold' }}>TOTAL PAID</div>
+                <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#34d399' }}>৳{totalPaidBdt.toLocaleString()} BDT</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '9px', color: totalDueBdt > 0 ? '#f87171' : '#34d399', textTransform: 'uppercase', fontWeight: 'bold' }}>OUTSTANDING DUE</div>
+                <div style={{ fontSize: '15px', fontWeight: 'bold', color: totalDueBdt > 0 ? '#f87171' : '#34d399' }}>৳{totalDueBdt.toLocaleString()} BDT</div>
               </div>
             </div>
           </div>
 
-          <div style={{ marginTop: '24px', textAlign: 'center', fontSize: '9px', color: '#6b7280', borderTop: '1px solid #e5e7eb', paddingTop: '10px' }}>
-            Generated by OMNI Sourcing & Costing Engine • Page 1 of 1
+          <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '9px', color: '#6b7280', borderTop: '1px solid #e5e7eb', paddingTop: '8px' }}>
+            Generated by OMNI Sourcing & Costing Engine • Customer Payment & Balance Statement
           </div>
         </div>
       </div>

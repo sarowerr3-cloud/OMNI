@@ -498,6 +498,7 @@ export default function Home() {
     const weightKg = Number(math.override.weight) || 0.35;
     const qty = Number(math.override.qty) || 1;
     const priceBdt = math.unitPriceBdt;
+    const lineTotal = priceBdt * qty;
 
     const newItem: ProductItem = {
       id: `prod_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -510,7 +511,10 @@ export default function Home() {
       quantity: qty,
       image_url: imgUrl,
       product_url: res.product.url,
-      platform: res.product.platform
+      platform: res.product.platform,
+      paid_amount: 0,
+      due_amount: lineTotal,
+      payment_status: 'unpaid'
     };
 
     setProductListItems((prev) => [...prev, newItem]);
@@ -524,6 +528,7 @@ export default function Home() {
     const qty = Math.max(1, Number(manualQty) || 1);
     const weightVal = Number(manualWeightVal) || 350;
     const weightKg = manualWeightUnit === 'gm' ? weightVal / 1000.0 : weightVal;
+    const lineTotal = priceBdt * qty;
 
     const newItem: ProductItem = {
       id: `prod_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -534,7 +539,10 @@ export default function Home() {
       price_bdt: priceBdt,
       weight_kg: Number(weightKg.toFixed(3)),
       quantity: qty,
-      platform: '1688'
+      platform: '1688',
+      paid_amount: 0,
+      due_amount: lineTotal,
+      payment_status: 'unpaid'
     };
 
     setProductListItems((prev) => [...prev, newItem]);

@@ -18,6 +18,9 @@ class ProductListItem(BaseModel):
     product_url: Optional[str] = None
     platform: Optional[str] = "Manual"
     notes: Optional[str] = None
+    paid_amount_bdt: Optional[Decimal] = Decimal("0.00")
+    due_amount_bdt: Optional[Decimal] = Decimal("0.00")
+    payment_status: Optional[str] = "unpaid"
 
 
 class ProductListCreate(BaseModel):
@@ -25,6 +28,9 @@ class ProductListCreate(BaseModel):
     date: str = Field(..., description="Date of the product list (YYYY-MM-DD)")
     items: List[ProductListItem] = []
     notes: Optional[str] = None
+    total_paid_bdt: Optional[Decimal] = Decimal("0.00")
+    total_due_bdt: Optional[Decimal] = Decimal("0.00")
+    payment_status: Optional[str] = "unpaid"
 
 
 class ProductListResponse(BaseModel):
@@ -36,6 +42,9 @@ class ProductListResponse(BaseModel):
     total_weight_kg: Decimal
     total_items_count: int
     total_quantity: int
+    total_paid_bdt: Decimal = Decimal("0.00")
+    total_due_bdt: Decimal = Decimal("0.00")
+    payment_status: str = "unpaid"
     notes: Optional[str] = None
     created_at: str
     updated_at: str

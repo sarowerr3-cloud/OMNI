@@ -51,6 +51,9 @@ async def test_product_list_crud_flow(async_client):
     assert float(created_data["total_price_bdt"]) == 23600.0
     # 10 * 0.35 + 20 * 0.15 = 3.5 + 3.0 = 6.5 kg
     assert float(created_data["total_weight_kg"]) == 6.5
+    assert float(created_data["total_paid_bdt"]) == 0.0
+    assert float(created_data["total_due_bdt"]) == 23600.0
+    assert created_data["payment_status"] == "unpaid"
 
     # 2. Get list by ID
     get_res = await async_client.get(f"/product-lists/{list_id}")
@@ -62,11 +65,21 @@ async def test_product_list_crud_flow(async_client):
     assert list_all_res.status_code == 200
     assert len(list_all_res.json()) >= 1
 
-    # 4. Update list
+    # 4. Update list with partial payment
     payload["name"] = "Updated Q4 Sourcing List"
+    payload["items"][0]["paid_amount_bdt"] = 5600.00  # Item 1 fully paid
+    payload["items"][1]["paid_amount_bdt"] = 3000.00  # Item 2 partial paid
     update_res = await async_client.put(f"/product-lists/{list_id}", json=payload)
     assert update_res.status_code == 200
-    assert update_res.json()["name"] == "Updated Q4 Sourcing List"
+    updated_data = update_res.json()
+    assert updated_data["name"] == "Updated Q4 Sourcing List"
+    assert float(updated_data["total_paid_bdt"]) == 8600.0
+    assert float(updated_data["total_due_bdt"]) == 15000.0
+    assert updated_data["payment_status"] == "partial"
+    assert updated_data["items"][0]["payment_status"] == "paid"
+    assert float(updated_data["items"][0]["due_amount_bdt"]) == 0.0
+    assert updated_data["items"][1]["payment_status"] == "partial"
+    assert float(updated_data["items"][1]["due_amount_bdt"]) == 15000.0
 
     # 5. Delete list
     del_res = await async_client.delete(f"/product-lists/{list_id}")
