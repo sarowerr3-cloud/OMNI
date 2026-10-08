@@ -109,10 +109,9 @@ async def search_products(req: SearchRequest):
     if not isinstance(bd_benchmarks, list):
         bd_benchmarks = []
 
-    sourced_results: List[SourcedProductResult] = []
-
+    # Step 1: Compute all cost breakdowns and margin analyses (CPU-bound, instant)
+    product_analyses = []
     for product in sourcing_products:
-        # Calculate Landed Cost using user-defined RMB exchange rate
         breakdown = cost_engine.calculate_landed_cost(
             product=product,
             quantity=req.quantity,
@@ -120,20 +119,31 @@ async def search_products(req: SearchRequest):
             user_weight_kg=req.user_weight_kg,
             custom_rate_rmb_bdt=rmb_rate
         )
-
-        # Calculate BD Market Margin & Profit against local benchmarks
         analysis = pricing_engine.calculate_market_margin(
             per_unit_landed_cost=breakdown.per_unit_landed_cost,
             local_benchmarks=bd_benchmarks
         )
+        product_analyses.append((product, breakdown, analysis))
 
-        claude_insight = await claude_service.analyze_sourcing_market(
+    # Step 2: Fire all Claude AI insight calls in parallel (3x speed boost)
+    claude_tasks = [
+        claude_service.analyze_sourcing_market(
             product_title=product.title_en or product.title_original,
             landed_cost_bdt=float(breakdown.per_unit_landed_cost),
             bd_avg_retail_price_bdt=float(analysis.local_bd_market_avg_price),
             estimated_margin_percent=float(analysis.gross_margin_percent),
             moq=product.moq
         )
+        for product, breakdown, analysis in product_analyses
+    ]
+    claude_results = await asyncio.gather(*claude_tasks, return_exceptions=True)
+
+    # Step 3: Assemble final results
+    sourced_results: List[SourcedProductResult] = []
+    for (product, breakdown, analysis), claude_insight in zip(product_analyses, claude_results):
+        if isinstance(claude_insight, Exception):
+            logger.error(f"Claude insight failed for {product.title_en}: {claude_insight}")
+            claude_insight = {"error": str(claude_insight), "commercial_viability": "UNKNOWN"}
 
         sourced_results.append(
             SourcedProductResult(
@@ -236,8 +246,8 @@ async def search_products_by_image(
     if not isinstance(bd_benchmarks, list):
         bd_benchmarks = []
 
-    sourced_results: List[SourcedProductResult] = []
-
+    # Step 1: Compute all cost breakdowns and margin analyses (CPU-bound, instant)
+    product_analyses = []
     for product in sourcing_products:
         breakdown = cost_engine.calculate_landed_cost(
             product=product,
@@ -246,19 +256,31 @@ async def search_products_by_image(
             user_weight_kg=parsed_weight,
             custom_rate_rmb_bdt=parsed_rate
         )
-
         margin_analysis = pricing_engine.calculate_market_margin(
             per_unit_landed_cost=breakdown.per_unit_landed_cost,
             local_benchmarks=bd_benchmarks
         )
+        product_analyses.append((product, breakdown, margin_analysis))
 
-        claude_insight = await claude_service.analyze_sourcing_market(
+    # Step 2: Fire all Claude AI insight calls in parallel (3x speed boost)
+    claude_tasks = [
+        claude_service.analyze_sourcing_market(
             product_title=product.title_en or product.title_original,
             landed_cost_bdt=float(breakdown.per_unit_landed_cost),
             bd_avg_retail_price_bdt=float(margin_analysis.local_bd_market_avg_price),
             estimated_margin_percent=float(margin_analysis.gross_margin_percent),
             moq=product.moq
         )
+        for product, breakdown, margin_analysis in product_analyses
+    ]
+    claude_results = await asyncio.gather(*claude_tasks, return_exceptions=True)
+
+    # Step 3: Assemble final results
+    sourced_results: List[SourcedProductResult] = []
+    for (product, breakdown, margin_analysis), claude_insight in zip(product_analyses, claude_results):
+        if isinstance(claude_insight, Exception):
+            logger.error(f"Claude insight failed for {product.title_en}: {claude_insight}")
+            claude_insight = {"error": str(claude_insight), "commercial_viability": "UNKNOWN"}
 
         sourced_results.append(
             SourcedProductResult(

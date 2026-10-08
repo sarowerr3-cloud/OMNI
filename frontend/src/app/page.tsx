@@ -2,69 +2,36 @@
 
 import { useState, useEffect, useRef } from 'react';
 import ProductListBuilder, { ProductItem } from '@/components/ProductListBuilder';
-
-interface SourcedProductResult {
-  product: {
-    platform: string;
-    title_original: string;
-    title_en?: string;
-    price: number;
-    currency: string;
-    price_bdt?: number;
-    moq: number;
-    url?: string;
-    images?: string[];
-    videos?: string[];
-    specs?: Record<string, string>;
-    seller_name?: string;
-    seller_rating?: number;
-    weight_kg?: number;
-    dimensions?: string;
-  };
-  cost_breakdown: {
-    item_price_bdt: number;
-    domestic_china_shipping_bdt: number;
-    agent_fee_bdt: number;
-    international_freight_bdt: number;
-    duty_vat_bdt: number;
-    payment_fee_bdt: number;
-    total_landed_cost: number;
-    per_unit_landed_cost: number;
-  };
-  market_analysis: {
-    per_unit_landed_cost: number;
-    local_bd_market_avg_price: number;
-    local_bd_market_min_price: number;
-    local_bd_market_max_price: number;
-    estimated_net_profit: number;
-    gross_margin_percent: number;
-    roi_percent: number;
-    break_even_quantity: number;
-  };
-  claude_insight?: {
-    claude_model?: string;
-    market_positioning?: string;
-    commercial_viability?: string;
-    risk_factors?: string[];
-    recommended_pricing_strategy?: string;
-    recommended_channels?: string[];
-    sourcing_tip?: string;
-  };
-}
-
-interface LocalMarketBenchmark {
-  platform: string;
-  seller_or_store: string;
-  price_bdt: number;
-  listing_url?: string;
-  source_type: string;
-  notes?: string;
-}
+import { SourcedProductResult, LocalMarketBenchmark, SearchResults } from '@/lib/types';
+import { formatMoney } from '@/lib/formatters';
+import { useSearchHistory } from '@/hooks/useSearchHistory';
+import SearchHistory from '@/components/SearchHistory';
+import SkeletonCard, { SearchLoadingOverlay } from '@/components/SkeletonCard';
+import ComparisonTable from '@/components/ComparisonTable';
+import { useExchangeRate } from '@/hooks/useExchangeRate';
+import { exportQuotationPdf } from '@/lib/pdfExport';
+import NegotiationModal from '@/components/NegotiationModal';
 
 export default function Home() {
   const [health, setHealth] = useState<any>(null);
   const [searchMode, setSearchMode] = useState<'text' | 'image' | 'manual' | 'list'>('text');
   const [productListItems, setProductListItems] = useState<ProductItem[]>([]);
+  
+  // Search history state management
+  const { history: searchHistory, addSearch, removeSearch, clearHistory } = useSearchHistory();
+
+  // Live Exchange Rates Hook
+  const { rates: liveRates, loading: ratesLoading, refreshRates } = useExchangeRate();
+
+  // Active negotiation modal state
+  const [activeNegotiationProduct, setActiveNegotiationProduct] = useState<{
+    product: SourcedProductResult['product'];
+    rmbPrice: number;
+    qty: number;
+  } | null>(null);
+
+  // PDF Export loading state
+  const [exportingPdf, setExportingPdf] = useState(false);
   
   // Search Parameters
   const [query, setQuery] = useState('Smart Watch Ultra');
@@ -156,17 +123,20 @@ export default function Home() {
       });
   }, [apiUrl]);
 
+  // Synchronize live exchange rates when available
+  useEffect(() => {
+    if (liveRates?.cny_to_bdt && liveRates.cny_to_bdt > 0) {
+      setGlobalRateRmbBdt(liveRates.cny_to_bdt.toFixed(2));
+      setManualRateRmb(liveRates.cny_to_bdt.toFixed(2));
+    }
+  }, [liveRates?.cny_to_bdt]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedFile(file);
       setPreviewUrl(URL.createObjectURL(file));
     }
-  };
-
-  const formatMoney = (val: number | undefined | null): string => {
-    if (val === undefined || val === null || isNaN(val)) return '0';
-    return Number(val).toLocaleString();
   };
 
   // Compute live manual calculator breakdown
@@ -265,6 +235,51 @@ export default function Home() {
     showToast('📋 Formal Client Quotation copied to clipboard!');
   };
 
+  const handleDownloadPdf = async () => {
+    setExportingPdf(true);
+    try {
+      const math = computeManualMath();
+      await exportQuotationPdf(
+        {
+          productTitle: query.trim() || 'Custom China Sourced Item',
+          rmbPrice: manualRmbPrice,
+          rmbRate: manualRateRmb,
+          quantity: manualQty,
+          weightVal: manualWeightVal,
+          weightUnit: manualWeightUnit,
+          totalWeightKg: math.totalWeightKg,
+          freightRate: manualFreightRate,
+          freightUnit: manualFreightUnit,
+          domesticShipping: manualDomesticShipping,
+          agentFeePct: manualAgentFeePct,
+          dutyPct: manualDutyPct,
+          otherCosts: manualOtherCosts,
+          itemPriceBdt: math.itemPriceBdt,
+          domesticShippingBdt: math.domesticShippingBdt,
+          agentFeeBdt: math.agentFeeBdt,
+          freightBdt: math.freightBdt,
+          dutyVatBdt: math.dutyVatBdt,
+          otherCostsBdt: math.otherCostsBdt,
+          totalLandedCost: math.totalLandedCost,
+          perUnitLandedCost: math.perUnitLandedCost,
+          targetPrice: math.targetPrice,
+          netProfit: math.netProfit,
+          batchTotalProfit: math.batchTotalProfit,
+          grossMargin: math.grossMargin,
+          roi: math.roi,
+          breakEvenUnits: math.breakEvenUnits,
+        },
+        formatMoney
+      );
+      showToast('📄 Formal PDF Quotation generated and downloaded!');
+    } catch (err: any) {
+      console.error('PDF export error:', err);
+      showToast('❌ Failed to export PDF: ' + (err.message || 'Error'));
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   const resetManualDefaults = () => {
     setManualRmbPrice('28.00');
     setManualRateRmb('20.00');
@@ -290,10 +305,11 @@ export default function Home() {
     }
   };
 
-  const handleSearch = async (e?: React.FormEvent) => {
+  const handleSearch = async (e?: React.FormEvent, customQuery?: string) => {
     if (e) e.preventDefault();
+    const searchQuery = customQuery !== undefined ? customQuery : query;
 
-    if (searchMode === 'text' && !query.trim()) return;
+    if (searchMode === 'text' && !searchQuery.trim()) return;
     if (searchMode === 'image' && !selectedFile) {
       alert('Please select or capture a product image to search.');
       return;
@@ -308,7 +324,7 @@ export default function Home() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query,
+            query: searchQuery,
             quantity: Number(globalQuantity) || 10,
             shipping_method: globalShippingMethod,
             user_weight_kg: globalWeightKg ? Number(globalWeightKg) : null,
@@ -323,6 +339,7 @@ export default function Home() {
         const data = await res.json();
         setSearchResults(data);
         initOverrides(data.sourcing_results);
+        addSearch(searchQuery, 'text', data.sourcing_results?.length || 0);
       } else if (searchMode === 'image') {
         const formData = new FormData();
         formData.append('file', selectedFile!);
@@ -343,6 +360,8 @@ export default function Home() {
         const data = await res.json();
         setSearchResults(data);
         initOverrides(data.sourcing_results);
+        const searchLabel = data.image_analysis?.description_en || selectedFile?.name || 'Image Search';
+        addSearch(searchLabel, 'image', data.sourcing_results?.length || 0);
       }
     } catch (err: any) {
       console.error('Search failed:', err);
@@ -554,6 +573,20 @@ export default function Home() {
           <span style={{ color: '#dc2626', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span>🤖</span> Dual AI Co-Pilot (Gemini + Claude)
           </span>
+          <span style={{ color: '#52525b' }}>|</span>
+          <span
+            style={{ color: '#38bdf8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+            onClick={() => {
+              if (liveRates?.cny_to_bdt) {
+                setGlobalRateRmbBdt(liveRates.cny_to_bdt.toFixed(2));
+                setManualRateRmb(liveRates.cny_to_bdt.toFixed(2));
+                showToast(`Applied Live Rate: 1 RMB = ৳${liveRates.cny_to_bdt} BDT`);
+              }
+            }}
+            title="Click to apply live rate"
+          >
+            <span>💱</span> 1 RMB = ৳{liveRates?.cny_to_bdt ? liveRates.cny_to_bdt.toFixed(2) : '20.00'}
+          </span>
         </div>
       </header>
 
@@ -709,6 +742,18 @@ export default function Home() {
                     </button>
                   </div>
 
+                  {/* Recent Search History */}
+                  <SearchHistory
+                    history={searchHistory}
+                    onSelect={(histQ) => {
+                      setQuery(histQ);
+                      showToast(`Searching "${histQ}" from history...`);
+                      handleSearch(undefined, histQ);
+                    }}
+                    onRemove={removeSearch}
+                    onClear={clearHistory}
+                  />
+
                   {/* Quick Trending Product Chips */}
                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.75rem', color: '#a1a1aa', fontWeight: 600, marginRight: '4px' }}>🔥 Trending Searches:</span>
@@ -835,9 +880,31 @@ export default function Home() {
               {/* Global Config Controls Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', paddingTop: '0.5rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#dc2626', fontWeight: 700, marginBottom: '4px' }}>
-                    💱 Exchange Rate: 1 RMB = (Tk / BDT)
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 700 }}>
+                      💱 1 RMB = (Tk / BDT)
+                    </label>
+                    {liveRates?.cny_to_bdt && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGlobalRateRmbBdt(liveRates.cny_to_bdt.toFixed(2));
+                          showToast(`⚡ Applied Live FX Rate: ৳${liveRates.cny_to_bdt}`);
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#38bdf8',
+                          fontSize: '0.7rem',
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                          padding: 0,
+                        }}
+                      >
+                        ⚡ Live: ৳{liveRates.cny_to_bdt.toFixed(2)}
+                      </button>
+                    )}
+                  </div>
                   <input
                     type="number"
                     step="0.05"
@@ -998,7 +1065,28 @@ export default function Home() {
                     boxShadow: '0 0 10px rgba(220, 38, 38, 0.3)',
                   }}
                 >
-                  📋 Copy Formal Quotation
+                  📋 Copy Quotation
+                </button>
+                <button
+                  type="button"
+                  disabled={exportingPdf}
+                  onClick={handleDownloadPdf}
+                  style={{
+                    background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '8px 16px',
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    cursor: exportingPdf ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 0 10px rgba(37, 99, 235, 0.3)',
+                  }}
+                >
+                  {exportingPdf ? '⏳ Generating PDF...' : '📄 Download PDF'}
                 </button>
                 <button
                   type="button"
@@ -1024,6 +1112,27 @@ export default function Home() {
               {/* RMB Quick Switcher */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 800 }}>💱 RMB Exchange Rate:</span>
+                {liveRates?.cny_to_bdt && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualRateRmb(liveRates.cny_to_bdt.toFixed(2));
+                      showToast(`⚡ Set to Live RMB Rate: ৳${liveRates.cny_to_bdt}`);
+                    }}
+                    style={{
+                      background: manualRateRmb === liveRates.cny_to_bdt.toFixed(2) ? '#2563eb' : '#18181b',
+                      border: '1px solid #3b82f6',
+                      borderRadius: '6px',
+                      padding: '4px 10px',
+                      fontSize: '0.75rem',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ⚡ Live (৳{liveRates.cny_to_bdt.toFixed(2)})
+                  </button>
+                )}
                 {[
                   { label: 'RMB @ ৳19.50', rate: '19.50' },
                   { label: 'RMB @ ৳20.00 (Default)', rate: '20.00' },
@@ -1426,8 +1535,13 @@ export default function Home() {
           </section>
         )}
 
+        {/* Loading Skeleton & Progress Overlay */}
+        {searchMode !== 'manual' && loading && (
+          <SearchLoadingOverlay mode={searchMode === 'image' ? 'image' : 'text'} />
+        )}
+
         {/* Results Section for Text/Image Search */}
-        {searchMode !== 'manual' && searchResults && (
+        {searchMode !== 'manual' && !loading && searchResults && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
             {/* Gemini Vision Analysis Banner (if image search) */}
             {searchResults?.image_analysis && (
@@ -1456,6 +1570,9 @@ export default function Home() {
                 </div>
               </div>
             )}
+
+            {/* Side-by-Side Supplier Comparison Table */}
+            <ComparisonTable results={sourcingResults} rmbRate={Number(globalRateRmbBdt) || 20} />
 
             {/* 1. Sourcing Suppliers with Photos, Video & Interactive Live Override Controls */}
             <div>
@@ -1798,6 +1915,36 @@ export default function Home() {
                           ➕ Add to Product List
                         </button>
 
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setActiveNegotiationProduct({
+                              product: res.product,
+                              rmbPrice: res.product.price,
+                              qty: math.override.qty,
+                            })
+                          }
+                          style={{
+                            flex: 1,
+                            minWidth: '140px',
+                            background: '#15803d',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '10px',
+                            fontWeight: 700,
+                            fontSize: '0.85rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                            boxShadow: '0 0 10px rgba(21, 128, 61, 0.3)',
+                          }}
+                        >
+                          💬 Chinese Script
+                        </button>
+
                         {res.product?.url && (
                           <a
                             href={res.product.url}
@@ -1816,7 +1963,7 @@ export default function Home() {
                               textDecoration: 'none',
                             }}
                           >
-                            🔗 Buy Manually on {res.product.platform}
+                            🔗 Buy on {res.product.platform}
                           </a>
                         )}
                       </div>
@@ -1902,6 +2049,17 @@ export default function Home() {
         >
           <span>{toastMessage}</span>
         </div>
+      )}
+
+      {/* 1688 / WeChat Price Negotiation Modal */}
+      {activeNegotiationProduct && (
+        <NegotiationModal
+          product={activeNegotiationProduct.product}
+          currentRmbPrice={activeNegotiationProduct.rmbPrice}
+          quantity={activeNegotiationProduct.qty}
+          onClose={() => setActiveNegotiationProduct(null)}
+          showToast={showToast}
+        />
       )}
     </div>
   );
