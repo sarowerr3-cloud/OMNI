@@ -13,22 +13,59 @@ except ImportError:
     logger.warning("google-genai package not installed, running in fallback mode.")
 
 
+def _is_valid_key(key: Optional[str]) -> bool:
+    if not key:
+        return False
+    k = key.strip()
+    return bool(k and not k.startswith("your_") and "placeholder" not in k.lower() and k != "none")
+
+
+_UNSET = object()
+
+
 class GeminiService:
     """Service to handle interactions with the Google Gemini API using the google-genai SDK."""
 
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or settings.GEMINI_API_KEY
+    def __init__(self, api_key: Any = _UNSET):
+        if api_key is not _UNSET:
+            self.api_key = api_key if _is_valid_key(api_key) else None
+            self._explicit = True
+        else:
+            self.api_key = settings.GEMINI_API_KEY if _is_valid_key(settings.GEMINI_API_KEY) else None
+            self._explicit = False
         self.model = settings.GEMINI_MODEL
         self._client = None
+        self._init_client()
 
-        if self.api_key and GENAI_AVAILABLE:
+    def _init_client(self):
+        if _is_valid_key(self.api_key) and GENAI_AVAILABLE:
             try:
                 self._client = genai.Client(api_key=self.api_key)
             except Exception as e:
                 logger.error(f"Failed to initialize Gemini Client: {e}")
 
+    def configure(self, api_key: Optional[str] = None, model: Optional[str] = None):
+        from backend.app.core.config import get_settings
+        current_settings = get_settings()
+        target_key = api_key if api_key is not None else current_settings.GEMINI_API_KEY
+        self.api_key = target_key if _is_valid_key(target_key) else None
+        self._explicit = api_key is not None
+        if model or current_settings.GEMINI_MODEL:
+            self.model = model or current_settings.GEMINI_MODEL
+        self._client = None
+        self._init_client()
+
     @property
     def is_configured(self) -> bool:
+        if self._client is None and not self._explicit:
+            from backend.app.core.config import get_settings
+            get_settings.cache_clear()
+            fresh_settings = get_settings()
+            key_to_use = self.api_key or fresh_settings.GEMINI_API_KEY
+            if _is_valid_key(key_to_use):
+                self.api_key = key_to_use
+                self.model = fresh_settings.GEMINI_MODEL
+                self._init_client()
         return self._client is not None
 
     async def translate_text(self, text: str, target_lang: str = "English") -> str:

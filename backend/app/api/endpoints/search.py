@@ -23,6 +23,7 @@ class SearchRequest(BaseModel):
     shipping_method: str = "air"  # "air" or "sea"
     user_weight_kg: Optional[float] = None
     rate_rmb_bdt: Optional[Decimal] = Decimal("20.00")
+    freight_rate_per_kg: Optional[Decimal] = None
 
 
 class SourcedProductResult(BaseModel):
@@ -117,7 +118,8 @@ async def search_products(req: SearchRequest):
             quantity=req.quantity,
             shipping_method=req.shipping_method,
             user_weight_kg=req.user_weight_kg,
-            custom_rate_rmb_bdt=rmb_rate
+            custom_rate_rmb_bdt=rmb_rate,
+            custom_freight_rate_per_kg=req.freight_rate_per_kg
         )
         analysis = pricing_engine.calculate_market_margin(
             per_unit_landed_cost=breakdown.per_unit_landed_cost,
@@ -174,12 +176,13 @@ async def search_products_by_image(
     quantity: int = Form(10),
     shipping_method: str = Form("air"),
     user_weight_kg: Optional[str] = Form(None),
-    rate_rmb_bdt: Optional[str] = Form("20.00")
+    rate_rmb_bdt: Optional[str] = Form("20.00"),
+    freight_rate_per_kg: Optional[str] = Form(None)
 ):
     """
     Search product by uploading an Image. Uses Google Gemini Vision AI to identify product features,
     generate English and Chinese search terms, query China sourcing platforms + BD local market benchmarks,
-    and calculate Landed Costs using user's RMB exchange rate.
+    and calculate Landed Costs using user's RMB exchange rate and user's weight rate.
     """
     filename = (file.filename or "").lower()
     content_type = (file.content_type or "").lower()
@@ -221,6 +224,15 @@ async def search_products_by_image(
     except Exception:
         parsed_rate = Decimal("20.00")
 
+    parsed_freight_rate = None
+    if freight_rate_per_kg:
+        try:
+            parsed_freight_rate = Decimal(str(freight_rate_per_kg))
+            if parsed_freight_rate <= 0:
+                parsed_freight_rate = None
+        except Exception:
+            parsed_freight_rate = None
+
     parsed_weight = None
     if user_weight_kg:
         try:
@@ -254,7 +266,8 @@ async def search_products_by_image(
             quantity=quantity,
             shipping_method=shipping_method,
             user_weight_kg=parsed_weight,
-            custom_rate_rmb_bdt=parsed_rate
+            custom_rate_rmb_bdt=parsed_rate,
+            custom_freight_rate_per_kg=parsed_freight_rate
         )
         margin_analysis = pricing_engine.calculate_market_margin(
             per_unit_landed_cost=breakdown.per_unit_landed_cost,

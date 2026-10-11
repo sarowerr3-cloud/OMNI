@@ -177,7 +177,12 @@ export default function VideoLoadingOverlay({
             <img
               src="/logo.png"
               alt="OMNI Logo"
-              style={{ height: '52px', objectFit: 'contain', display: 'block' }}
+              style={{
+                height: '52px',
+                objectFit: 'contain',
+                display: 'block',
+                imageRendering: '-webkit-optimize-contrast',
+              }}
             />
           </div>
         </div>

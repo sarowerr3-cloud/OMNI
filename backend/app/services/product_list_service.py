@@ -86,6 +86,7 @@ class ProductListService:
         product_list = ProductListResponse(
             id=list_id,
             name=data.name,
+            brand_name=data.brand_name or "OMNI SOURCING",
             date=data.date,
             items=data.items,
             total_price_bdt=total_price_bdt,
@@ -127,6 +128,7 @@ class ProductListService:
         updated = ProductListResponse(
             id=list_id,
             name=data.name,
+            brand_name=data.brand_name or existing.brand_name or "OMNI SOURCING",
             date=data.date,
             items=data.items,
             total_price_bdt=total_price_bdt,

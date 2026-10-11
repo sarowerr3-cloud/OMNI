@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { SourcedProductResult } from '@/lib/types';
 import { formatMoney } from '@/lib/formatters';
+import { WHATSAPP_GROUP_URL, shareToWhatsApp } from '@/config/whatsapp';
 
 interface ComparisonTableProps {
   results: SourcedProductResult[];
@@ -241,6 +242,90 @@ export default function ComparisonTable({ results, rmbRate }: ComparisonTablePro
               })}
             </tbody>
           </table>
+
+          {/* WhatsApp Group Share Footer */}
+          <div
+            style={{
+              padding: '12px 16px',
+              background: '#18181b',
+              borderTop: '1px solid #27272a',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '10px',
+            }}
+          >
+            <div style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>
+              💡 Share this comparative analysis with suppliers & partners
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <a
+                href={WHATSAPP_GROUP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  background: 'rgba(34, 197, 94, 0.1)',
+                  border: '1px solid rgba(34, 197, 94, 0.35)',
+                  color: '#86efac',
+                  padding: '7px 12px',
+                  borderRadius: '8px',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  textDecoration: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <span>💬</span>
+                <span>Open VIP Group</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const lines: string[] = [
+                    '📊 *OMNI FACTORY SOURCING COMPARISON REPORT*',
+                    '━━━━━━━━━━━━━━━━━━━━━',
+                    `Compared Options: ${results.length} products`,
+                  ];
+                  results.forEach((r, idx) => {
+                    lines.push(`\n*Option ${idx + 1} (${r.product.platform}):*`);
+                    lines.push(`• Title: ${r.product.title_en || r.product.title_original || 'Item'}`);
+                    lines.push(`• Supplier Price: ¥${r.product.price} RMB`);
+                    lines.push(`• Landed Cost: ৳${formatMoney(r.cost_breakdown.per_unit_landed_cost)} BDT/unit`);
+                    lines.push(`• Net Profit: ৳${formatMoney(r.market_analysis.estimated_net_profit)} BDT`);
+                    lines.push(`• Margin: ${r.market_analysis.gross_margin_percent}% | ROI: ${r.market_analysis.roi_percent}%`);
+                    if (r.product.url) lines.push(`• Link: ${r.product.url}`);
+                  });
+                  lines.push('\n━━━━━━━━━━━━━━━━━━━━━');
+                  lines.push('💬 *Join our VIP WhatsApp Sourcing Group:*');
+                  lines.push(WHATSAPP_GROUP_URL);
+                  lines.push('\n_Generated via OMNI Sourcing & Costing Engine_');
+
+                  shareToWhatsApp(lines.join('\n'));
+                }}
+                style={{
+                  background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '7px 14px',
+                  borderRadius: '8px',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 10px rgba(22, 163, 74, 0.3)',
+                }}
+              >
+                <span>📲 Share Comparison to VIP Group</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

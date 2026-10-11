@@ -62,3 +62,23 @@ async def test_manual_calculator_endpoint(async_client):
     assert float(data["per_unit_landed_cost"]) > 0
     assert float(data["estimated_net_profit_per_unit"]) > 0
     assert float(data["gross_margin_percent"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_sourcing_connectors_direct():
+    from backend.app.connectors.sourcing import aliexpress_connector, connector_1688
+
+    # Test AliExpress Connector fallback & properties
+    ali_items = await aliexpress_connector.search("Smart Watch")
+    assert len(ali_items) > 0
+    assert ali_items[0].platform == "AliExpress"
+    assert ali_items[0].currency == "USD"
+    assert "aliexpress.com" in ali_items[0].url
+
+    # Test 1688 Connector fallback & properties
+    c1688_items = await connector_1688.search("Smart Watch")
+    assert len(c1688_items) > 0
+    assert c1688_items[0].platform == "1688"
+    assert c1688_items[0].currency == "RMB"
+    assert "1688.com" in c1688_items[0].url
+

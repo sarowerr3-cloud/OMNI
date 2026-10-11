@@ -28,6 +28,7 @@ import {
   getWhatsappShareUrl,
   getSmsShareUrl
 } from '@/utils/customerMessaging';
+import { WHATSAPP_GROUP_URL } from '@/config/whatsapp';
 import { inputStyle, buttonActionStyle } from './customers/customerStyles';
 import CustomerFormModal from './customers/CustomerFormModal';
 import GroupFormModal from './customers/GroupFormModal';
@@ -318,6 +319,24 @@ export default function CustomerManager({
               <Send style={{ width: '16px', height: '16px' }} />
               <span>📢 Broadcast to Group</span>
             </button>
+
+            {/* Direct Link to VIP Group */}
+            <a
+              href={WHATSAPP_GROUP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                ...buttonActionStyle,
+                background: 'rgba(34, 197, 94, 0.15)',
+                border: '1px solid rgba(34, 197, 94, 0.4)',
+                color: '#86efac',
+                textDecoration: 'none',
+              }}
+              title="Open or Join OMNI WhatsApp VIP Sourcing Group"
+            >
+              <span style={{ fontSize: '0.9rem' }}>💬</span>
+              <span>WhatsApp VIP Group</span>
+            </a>
 
             <button
               onClick={fetchAllData}

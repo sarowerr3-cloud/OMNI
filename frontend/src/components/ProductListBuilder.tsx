@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { OMNI_LOGO_BASE64, OMNI_QR_BASE64 } from '@/lib/pdfAssets';
+import { WHATSAPP_GROUP_URL, openWhatsAppGroup } from '@/config/whatsapp';
 import { 
   FileText, 
   Plus, 
@@ -32,7 +34,12 @@ import {
   CheckCheck,
   RotateCcw,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Send,
+  Copy,
+  ChevronLeft,
+  ChevronRight,
+  ZoomIn
 } from 'lucide-react';
 
 export interface ProductItem {
@@ -45,6 +52,7 @@ export interface ProductItem {
   weight_kg: number;
   quantity: number;
   image_url?: string;
+  images?: string[];
   product_url?: string;
   platform?: string;
   notes?: string;
@@ -61,6 +69,7 @@ export interface ProductItem {
 export interface SavedProductList {
   id: string;
   name: string;
+  brand_name?: string;
   date: string;
   items: ProductItem[];
   total_price_bdt: number;
@@ -91,6 +100,71 @@ interface ProductListBuilderProps {
   onPitchToCustomers?: (item: ProductItem) => void;
 }
 
+export const formatExternalUrl = (url?: string): string => {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+};
+
+/**
+ * Compresses an uploaded image File using an HTML5 Canvas to keep local storage small
+ * and prevent QuotaExceededError while retaining high quality for PDF generation.
+ */
+export const compressImageFile = (file: File, maxDimension = 900, quality = 0.82): Promise<string> => {
+  return new Promise((resolve) => {
+    if (!file || !file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve((reader.result as string) || '');
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve((e.target?.result as string) || '');
+          return;
+        }
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.onerror = () => {
+        resolve((e.target?.result as string) || '');
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+};
+
 export default function ProductListBuilder({
   items,
   onUpdateItems,
@@ -106,6 +180,7 @@ export default function ProductListBuilder({
   const getTodayDate = () => new Date().toISOString().split('T')[0];
   
   const [listName, setListName] = useState<string>('');
+  const [brandName, setBrandName] = useState<string>('OMNI SOURCING');
   const [listDate, setListDate] = useState<string>(getTodayDate());
   const [listNotes, setListNotes] = useState<string>('');
   const [currentListId, setCurrentListId] = useState<string | null>(null);
@@ -154,13 +229,25 @@ export default function ProductListBuilder({
   const [newQuantity, setNewQuantity] = useState<number | string>('');
   const [newProductUrl, setNewProductUrl] = useState<string>('');
   const [newImageUrl, setNewImageUrl] = useState<string>('');
-  const [newPlatform, setNewPlatform] = useState<string>('1688');
+  const [newImages, setNewImages] = useState<string[]>([]);
+  const [newPlatform, setNewPlatform] = useState<string>('Pinduoduo');
   const [newPaidAmount, setNewPaidAmount] = useState<string>('');
 
   // Customer Deposit / Advance Modal State
   const [showDepositModal, setShowDepositModal] = useState<boolean>(false);
   const [depositAmountInput, setDepositAmountInput] = useState<string>('');
   const [depositStrategy, setDepositStrategy] = useState<'sequential' | 'proportional'>('sequential');
+
+  // PDF Export Mode: 'single_page' (strict 1-page A4) vs 'multi_page' (natural multi-page flow)
+  const [pdfExportMode, setPdfExportMode] = useState<'single_page' | 'multi_page'>('single_page');
+
+  // WhatsApp Quotation Sharing Modal State
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState<boolean>(false);
+  const [whatsAppPhone, setWhatsAppPhone] = useState<string>('');
+  const [waIncludeLinks, setWaIncludeLinks] = useState<boolean>(true);
+  const [waIncludeFreight, setWaIncludeFreight] = useState<boolean>(true);
+  const [waIncludeFacebook, setWaIncludeFacebook] = useState<boolean>(true);
+  const [waIncludeGroup, setWaIncludeGroup] = useState<boolean>(true);
 
   // Image Upload File Reference
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -176,6 +263,39 @@ export default function ProductListBuilder({
   const [savingToServer, setSavingToServer] = useState<boolean>(false);
   const [downloadingPdf, setDownloadingPdf] = useState<boolean>(false);
 
+  // Lightbox Photo Viewer State
+  const [previewModal, setPreviewModal] = useState<{
+    title: string;
+    images: string[];
+    currentIndex: number;
+    productUrl?: string;
+  } | null>(null);
+
+  // Keyboard navigation for Lightbox Photo Viewer
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!previewModal) return;
+      if (e.key === 'Escape') {
+        setPreviewModal(null);
+      } else if (e.key === 'ArrowLeft') {
+        setPreviewModal((prev) => {
+          if (!prev || prev.images.length <= 1) return prev;
+          const nextIdx = prev.currentIndex > 0 ? prev.currentIndex - 1 : prev.images.length - 1;
+          return { ...prev, currentIndex: nextIdx };
+        });
+      } else if (e.key === 'ArrowRight') {
+        setPreviewModal((prev) => {
+          if (!prev || prev.images.length <= 1) return prev;
+          const nextIdx = prev.currentIndex < prev.images.length - 1 ? prev.currentIndex + 1 : 0;
+          return { ...prev, currentIndex: nextIdx };
+        });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewModal]);
+
   // Auto-save & restore from localStorage
   useEffect(() => {
     const cachedData = localStorage.getItem('omni_active_product_list');
@@ -185,6 +305,7 @@ export default function ProductListBuilder({
         if (parsed.items && Array.isArray(parsed.items) && parsed.items.length > 0) {
           onUpdateItems(parsed.items);
           if (parsed.name) setListName(parsed.name);
+          if (parsed.brandName) setBrandName(parsed.brandName);
           if (parsed.date) setListDate(parsed.date);
           if (parsed.notes) setListNotes(parsed.notes);
           if (parsed.id) setCurrentListId(parsed.id);
@@ -203,6 +324,7 @@ export default function ProductListBuilder({
       const listPayload = {
         id: currentListId,
         name: listName,
+        brandName,
         date: listDate,
         notes: listNotes,
         freightRate,
@@ -210,16 +332,25 @@ export default function ProductListBuilder({
         includeWeightInTotal,
         items
       };
-      localStorage.setItem('omni_active_product_list', JSON.stringify(listPayload));
+      try {
+        localStorage.setItem('omni_active_product_list', JSON.stringify(listPayload));
+      } catch (e) {
+        console.warn('LocalStorage quota limit reached, skipping auto-cache:', e);
+      }
     } else {
-      localStorage.removeItem('omni_active_product_list');
+      try {
+        localStorage.removeItem('omni_active_product_list');
+      } catch (e) {
+        // ignore
+      }
     }
-  }, [listName, listDate, listNotes, items, currentListId, freightRate, freightUnit, includeWeightInTotal]);
+  }, [listName, brandName, listDate, listNotes, items, currentListId, freightRate, freightUnit, includeWeightInTotal]);
 
   // Reset / Refresh Product List Builder to clean default state
   const resetToDefaultBuilder = () => {
     onUpdateItems([]);
     setListName('');
+    setBrandName('OMNI SOURCING');
     setListDate(getTodayDate());
     setListNotes('');
     setCurrentListId(null);
@@ -233,6 +364,7 @@ export default function ProductListBuilder({
     setNewPaidAmount('');
     setNewProductUrl('');
     setNewImageUrl('');
+    setNewImages([]);
     try {
       localStorage.removeItem('omni_active_product_list');
     } catch (e) {
@@ -293,6 +425,15 @@ export default function ProductListBuilder({
     const itemStatus: 'paid' | 'partial' | 'unpaid' =
       dueNum === 0 && paidNum > 0 ? 'paid' : (paidNum > 0 ? 'partial' : 'unpaid');
 
+    // Collect all added images
+    const imagesList = [...newImages];
+    if (newImageUrl.trim() && !imagesList.includes(newImageUrl.trim())) {
+      imagesList.push(newImageUrl.trim());
+    }
+    const defaultPlaceholder = 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?auto=format&fit=crop&w=400&q=80';
+    const primaryImg = imagesList[0] || defaultPlaceholder;
+    const finalImages = imagesList.length > 0 ? imagesList : [primaryImg];
+
     const newItem: ProductItem = {
       id: `prod_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       title: newTitle.trim(),
@@ -306,8 +447,9 @@ export default function ProductListBuilder({
       line_weight_price_bdt: Number(lineWeightPrice.toFixed(2)),
       combined_unit_price_bdt: Number((priceBdt + unitWeightPrice).toFixed(2)),
       combined_line_total_bdt: Number(combinedLineTotal.toFixed(2)),
-      product_url: newProductUrl.trim() || undefined,
-      image_url: newImageUrl.trim() || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?auto=format&fit=crop&w=400&q=80',
+      product_url: newProductUrl.trim() ? formatExternalUrl(newProductUrl) : undefined,
+      image_url: primaryImg,
+      images: finalImages,
       platform: newPlatform,
       paid_amount: paidNum,
       due_amount: dueNum,
@@ -315,7 +457,7 @@ export default function ProductListBuilder({
     };
 
     onUpdateItems([...items, newItem]);
-    showToast(`✅ Added "${newItem.title}" (Weight Price: ৳${lineWeightPrice.toFixed(0)}) to product list!`);
+    showToast(`✅ Added "${newItem.title}" (${finalImages.length} photo${finalImages.length > 1 ? 's' : ''}) to product list!`);
 
     // Reset form to empty boxes by default
     setNewTitle('');
@@ -327,7 +469,9 @@ export default function ProductListBuilder({
     setNewPaidAmount('');
     setNewProductUrl('');
     setNewImageUrl('');
+    setNewImages([]);
     setNewQuantity('');
+    setNewPlatform('Pinduoduo');
   };
 
   // Helper calculations for items
@@ -536,18 +680,63 @@ export default function ProductListBuilder({
     showToast(`💰 Applied ৳${deposit.toLocaleString()} deposit! Remaining balance: ৳${newTotalDue.toLocaleString()}`);
   };
 
-  // Image Upload File Reader
-  const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (reader.result) {
-          setNewImageUrl(reader.result as string);
-          showToast('📸 Product image uploaded!');
+  // Image Upload File Reader (Multiple Files Supported with Client-Side Canvas Compression)
+  const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const files = Array.from(e.target.files);
+      showToast(`📸 Optimizing & uploading ${files.length} photo(s)...`);
+      try {
+        const compressedUrls = await Promise.all(files.map(f => compressImageFile(f)));
+        const validUrls = compressedUrls.filter(Boolean);
+        setNewImages((prev) => [...prev, ...validUrls]);
+        showToast(`✅ ${validUrls.length} image(s) optimized & uploaded!`);
+      } catch (err) {
+        console.error('Image compression failed:', err);
+        showToast('⚠️ Failed to optimize image(s)');
+      }
+      e.target.value = '';
+    }
+  };
+
+  const handleAddImageUrl = () => {
+    if (!newImageUrl.trim()) return;
+    setNewImages((prev) => [...prev, newImageUrl.trim()]);
+    setNewImageUrl('');
+    showToast('📸 Image URL added!');
+  };
+
+  const handleRemoveNewImage = (indexToRemove: number) => {
+    setNewImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  // Add more images to an existing item directly in the list with client-side canvas compression
+  const handleAddImagesToExistingItem = async (itemId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const files = Array.from(e.target.files);
+      showToast(`📸 Optimizing & adding ${files.length} photo(s)...`);
+      try {
+        const compressedUrls = await Promise.all(files.map(f => compressImageFile(f)));
+        const validUrls = compressedUrls.filter(Boolean);
+        if (validUrls.length > 0) {
+          onUpdateItems(items.map(it => {
+            if (it.id === itemId) {
+              const currentImages = (it.images && it.images.length > 0) ? [...it.images] : (it.image_url ? [it.image_url] : []);
+              const updatedImages = [...currentImages, ...validUrls];
+              return {
+                ...it,
+                images: updatedImages,
+                image_url: updatedImages[0]
+              };
+            }
+            return it;
+          }));
+          showToast(`📸 Added ${validUrls.length} optimized image(s) to product!`);
         }
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Add image to item failed:', err);
+        showToast('⚠️ Failed to optimize image(s)');
+      }
+      e.target.value = '';
     }
   };
 
@@ -683,6 +872,7 @@ export default function ProductListBuilder({
     try {
       const payload = {
         name: listName.trim() || 'My Sourcing Product List',
+        brand_name: brandName.trim() || 'OMNI SOURCING',
         date: listDate,
         notes: listNotes,
         freight_rate: Number(freightRate) || 1.2,
@@ -694,6 +884,7 @@ export default function ProductListBuilder({
           const combinedLineTotal = lineProductPrice + lineWeightPrice;
           return {
             ...it,
+            images: (it.images && it.images.length > 0) ? it.images : (it.image_url ? [it.image_url] : []),
             weight_price_bdt: unitWeightPrice,
             line_weight_price_bdt: lineWeightPrice,
             combined_unit_price_bdt: it.price_bdt + unitWeightPrice,
@@ -765,6 +956,7 @@ export default function ProductListBuilder({
   const handleLoadList = (saved: SavedProductList) => {
     setCurrentListId(saved.id);
     setListName(saved.name);
+    if (saved.brand_name) setBrandName(saved.brand_name);
     setListDate(saved.date);
     setListNotes(saved.notes || '');
     if (saved.freight_rate) setFreightRate(String(saved.freight_rate));
@@ -789,6 +981,7 @@ export default function ProductListBuilder({
       const status = (it.payment_status as any) || (due === 0 && paid > 0 ? 'paid' : (paid > 0 ? 'partial' : 'unpaid'));
       return {
         ...it,
+        images: (it.images && it.images.length > 0) ? it.images : (it.image_url ? [it.image_url] : []),
         weight_price_bdt: unitWeightPrice,
         line_weight_price_bdt: lineWeightPrice,
         combined_unit_price_bdt: (it.price_bdt || 0) + unitWeightPrice,
@@ -852,6 +1045,108 @@ export default function ProductListBuilder({
 
     navigator.clipboard.writeText(lines.filter(Boolean).join('\n'));
     showToast('📋 Sourcing, weight price & payment summary copied to clipboard!');
+  };
+
+  // Formatted WhatsApp message generator
+  const generateWhatsAppMessage = (): string => {
+    const parts: string[] = [];
+    parts.push(`*📦 OMNI SOURCING QUOTATION*`);
+    if (listName.trim()) {
+      parts.push(`*List:* ${listName.trim()}`);
+    }
+    parts.push(`*Date:* ${listDate}`);
+    if (waIncludeFreight) {
+      parts.push(`*Cargo Freight Rate:* ৳${freightRate}/${freightUnit === 'per_gm' ? 'gm' : 'kg'} (1,200 Tk/kg)`);
+    }
+    parts.push(`━━━━━━━━━━━━━━━━━━━━━`);
+
+    items.forEach((item, idx) => {
+      const productLine = getItemProductLineTotal(item);
+      const lineWeight = getItemLineWeightPrice(item);
+      const combined = getItemCombinedLineTotal(item);
+      const paid = getItemPaid(item);
+      const due = getItemDue(item);
+
+      parts.push(`*${idx + 1}. ${item.title}*`);
+      parts.push(`• Quantity: ${item.quantity} pcs`);
+      parts.push(`• Product Price: ৳${productLine.toLocaleString()} (৳${item.price_bdt.toLocaleString()}/unit)`);
+      if (waIncludeFreight) {
+        parts.push(`• Weight Price: ৳${lineWeight.toFixed(0)} (${((item.weight_kg || 0) * (item.quantity || 1)).toFixed(3)} kg)`);
+      }
+      parts.push(`• Line Total: *৳${combined.toLocaleString()} BDT*`);
+      if (paid > 0 || due > 0) {
+        parts.push(`• Paid: ৳${paid.toLocaleString()} | Due: *৳${due.toLocaleString()}*`);
+      }
+      if (waIncludeLinks && item.product_url) {
+        parts.push(`• Source Link: ${formatExternalUrl(item.product_url)}`);
+      }
+      parts.push(``);
+    });
+
+    parts.push(`━━━━━━━━━━━━━━━━━━━━━`);
+    parts.push(`*📊 ORDER SUMMARY:*`);
+    parts.push(`• Total Products: ${totalItemsCount} (${totalQuantity} pcs)`);
+    parts.push(`• Total Weight: ${totalWeightKg.toFixed(3)} kg`);
+    parts.push(`• Factory Product Value: ৳${totalProductPriceBdt.toLocaleString()} BDT`);
+    if (waIncludeFreight) {
+      parts.push(`• Total Freight Charge: ৳${totalWeightPriceBdt.toLocaleString()} BDT`);
+    }
+    parts.push(`• *GRAND TOTAL: ৳${grandTotalBdt.toLocaleString()} BDT*`);
+    if (totalPaidBdt > 0 || totalDueBdt > 0) {
+      parts.push(`• *Total Paid: ৳${totalPaidBdt.toLocaleString()} BDT*`);
+      parts.push(`• *Balance Due: ৳${totalDueBdt.toLocaleString()} BDT*`);
+    }
+
+    if (listNotes.trim()) {
+      parts.push(`\n📝 *Notes:* ${listNotes.trim()}`);
+    }
+
+    if (waIncludeFacebook) {
+      parts.push(`\n🌐 *Facebook Page:* https://facebook.com/omnisourcing`);
+    }
+
+    if (waIncludeGroup) {
+      parts.push(`💬 *VIP Sourcing WhatsApp Group:* ${WHATSAPP_GROUP_URL}`);
+    }
+
+    parts.push(`_Quotation generated via OMNI Sourcing & Intelligence Engine_`);
+
+    return parts.join('\n');
+  };
+
+  const handleSendWhatsApp = (toGroup: boolean = false) => {
+    if (items.length === 0) {
+      showToast('⚠️ Please add products before sharing to WhatsApp!');
+      return;
+    }
+    const cleanPhone = toGroup ? '' : whatsAppPhone.replace(/[^0-9]/g, '');
+    const message = generateWhatsAppMessage();
+    const encoded = encodeURIComponent(message);
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        navigator.clipboard.writeText(message);
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    const waUrl = cleanPhone 
+      ? `https://wa.me/${cleanPhone}?text=${encoded}` 
+      : `https://api.whatsapp.com/send?text=${encoded}`;
+    window.open(waUrl, '_blank', 'noopener,noreferrer');
+    setShowWhatsAppModal(false);
+    showToast(toGroup ? '💬 Opening WhatsApp to share in VIP Group!' : '💬 Opening WhatsApp with formatted quotation!');
+  };
+
+  const handleCopyWhatsAppText = () => {
+    if (items.length === 0) {
+      showToast('⚠️ No items to copy!');
+      return;
+    }
+    const message = generateWhatsAppMessage();
+    navigator.clipboard.writeText(message);
+    showToast('📋 WhatsApp quotation copied to clipboard!');
   };
 
   // Export CSV with Weight Price, Paid & Due tracking
@@ -918,7 +1213,7 @@ export default function ProductListBuilder({
     resetToDefaultBuilder();
   };
 
-  // Export A4 PDF Download
+  // Export A4 PDF Download (supports 'single_page' strict 1-page fit & 'multi_page' full manifest flow)
   const handleDownloadA4Pdf = async () => {
     if (items.length === 0) {
       showToast('⚠️ Please add at least one product before exporting to PDF!');
@@ -926,7 +1221,7 @@ export default function ProductListBuilder({
     }
 
     setDownloadingPdf(true);
-    showToast('⏳ Preparing high-resolution A4 PDF document...');
+    showToast(`⏳ Preparing ${pdfExportMode === 'single_page' ? 'strict 1-page' : 'multi-page'} A4 PDF document...`);
 
     try {
       const html2pdfModule = await import('html2pdf.js');
@@ -939,15 +1234,30 @@ export default function ProductListBuilder({
       }
 
       const opt = {
-        margin: [8, 8, 8, 8] as [number, number, number, number],
+        margin: [0, 0, 0, 0] as [number, number, number, number],
         filename: `${(listName.trim() || 'sourcing_list').toLowerCase().replace(/[^a-z0-9]/gi, '_')}_${listDate}.pdf`,
         image: { type: 'jpeg' as const, quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
+        jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const },
+        enableLinks: true
       };
 
-      await html2pdf().set(opt).from(element).save();
-      showToast('📄 A4 PDF downloaded successfully! Refreshed to default Product List Builder.');
+      const worker = html2pdf().set(opt).from(element);
+      const pdf: any = await (worker as any).toPdf().get('pdf');
+
+      if (pdfExportMode === 'single_page') {
+        // Strictly enforce exactly 1 single page in the generated PDF document
+        const totalPages = pdf.internal.getNumberOfPages();
+        for (let p = totalPages; p > 1; p--) {
+          pdf.deletePage(p);
+        }
+        pdf.save(opt.filename);
+        showToast('📄 A4 Single-Page PDF downloaded successfully!');
+      } else {
+        const totalPages = pdf.internal.getNumberOfPages();
+        pdf.save(opt.filename);
+        showToast(`📑 A4 Multi-Page PDF downloaded successfully (${totalPages} page${totalPages > 1 ? 's' : ''})!`);
+      }
       resetToDefaultBuilder();
     } catch (err) {
       console.error('PDF export error:', err);
@@ -967,12 +1277,12 @@ export default function ProductListBuilder({
   // Common Input Base Style Object
   const inputStyle: React.CSSProperties = {
     width: '100%',
-    backgroundColor: '#09090b',
-    border: '1px solid #3f3f46',
+    backgroundColor: 'var(--bg-surface, #09090b)',
+    border: '1px solid var(--border-color, #3f3f46)',
     borderRadius: '8px',
     padding: '9px 12px',
     fontSize: '0.9rem',
-    color: '#ffffff',
+    color: 'var(--text-primary, #ffffff)',
     outline: 'none',
     boxSizing: 'border-box'
   };
@@ -983,7 +1293,7 @@ export default function ProductListBuilder({
     gap: '6px',
     fontSize: '0.75rem',
     fontWeight: 700,
-    color: '#e2e8f0',
+    color: 'var(--text-secondary, #e2e8f0)',
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
     marginBottom: '6px'
@@ -992,11 +1302,11 @@ export default function ProductListBuilder({
   const buttonActionStyle: React.CSSProperties = {
     padding: '8px 14px',
     borderRadius: '10px',
-    backgroundColor: '#18181b',
-    color: '#f8fafc',
+    backgroundColor: 'var(--bg-surface, #18181b)',
+    color: 'var(--text-primary, #f8fafc)',
     fontSize: '0.85rem',
     fontWeight: 600,
-    border: '1px solid #3f3f46',
+    border: '1px solid var(--border-color, #3f3f46)',
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
@@ -1006,33 +1316,278 @@ export default function ProductListBuilder({
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
+      {/* FULL-SCREEN LIGHTBOX PHOTO VIEWER MODAL */}
+      {previewModal && (
+        <div
+          onClick={() => setPreviewModal(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(0, 0, 0, 0.92)',
+            backdropFilter: 'blur(10px)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '1.25rem',
+            animation: 'fadeIn 0.18s ease',
+          }}
+        >
+          {/* Top Bar */}
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '1200px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              color: '#ffffff',
+              paddingBottom: '10px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+              <h3 style={{
+                fontSize: '1rem',
+                fontWeight: 700,
+                color: '#ffffff',
+                margin: 0,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: '650px',
+              }}>
+                {previewModal.title}
+              </h3>
+              <span style={{
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                padding: '3px 10px',
+                borderRadius: '12px',
+                background: 'rgba(255, 255, 255, 0.15)',
+                color: '#ffffff',
+                whiteSpace: 'nowrap',
+              }}>
+                Photo {previewModal.currentIndex + 1} of {previewModal.images.length}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {previewModal.productUrl && (
+                <a
+                  href={formatExternalUrl(previewModal.productUrl)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    background: 'rgba(255, 255, 255, 0.12)',
+                    color: '#ffffff',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    textDecoration: 'none',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                  }}
+                >
+                  <ExternalLink size={13} />
+                  <span>Supplier Link</span>
+                </a>
+              )}
+
+              <button
+                onClick={() => setPreviewModal(null)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '50%',
+                  background: 'rgba(255, 255, 255, 0.18)',
+                  color: '#ffffff',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'background 0.15s ease',
+                }}
+                title="Close viewer (Esc)"
+              >
+                <X size={20} />
+              </button>
+            </div>
+          </div>
+
+          {/* Center Main Photo Stage */}
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'relative',
+              width: '100%',
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '10px 0',
+            }}
+          >
+            {/* Previous Button */}
+            {previewModal.images.length > 1 && (
+              <button
+                onClick={() => {
+                  setPreviewModal((prev) => {
+                    if (!prev) return null;
+                    const nextIdx = prev.currentIndex > 0 ? prev.currentIndex - 1 : prev.images.length - 1;
+                    return { ...prev, currentIndex: nextIdx };
+                  });
+                }}
+                style={{
+                  position: 'absolute',
+                  left: '16px',
+                  zIndex: 2,
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '50%',
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+                }}
+                title="Previous photo (Left arrow)"
+              >
+                <ChevronLeft size={28} />
+              </button>
+            )}
+
+            {/* Displayed Large Image */}
+            <img
+              src={previewModal.images[previewModal.currentIndex]}
+              alt={previewModal.title}
+              style={{
+                maxWidth: '88vw',
+                maxHeight: '74vh',
+                objectFit: 'contain',
+                borderRadius: '12px',
+                boxShadow: '0 12px 48px rgba(0, 0, 0, 0.75)',
+                userSelect: 'none',
+              }}
+            />
+
+            {/* Next Button */}
+            {previewModal.images.length > 1 && (
+              <button
+                onClick={() => {
+                  setPreviewModal((prev) => {
+                    if (!prev) return null;
+                    const nextIdx = prev.currentIndex < prev.images.length - 1 ? prev.currentIndex + 1 : 0;
+                    return { ...prev, currentIndex: nextIdx };
+                  });
+                }}
+                style={{
+                  position: 'absolute',
+                  right: '16px',
+                  zIndex: 2,
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '50%',
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+                }}
+                title="Next photo (Right arrow)"
+              >
+                <ChevronRight size={28} />
+              </button>
+            )}
+          </div>
+
+          {/* Bottom Thumbnails Strip (If Multiple Images) */}
+          {previewModal.images.length > 1 && (
+            <div 
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                display: 'flex',
+                gap: '8px',
+                maxWidth: '90vw',
+                overflowX: 'auto',
+                padding: '6px',
+                background: 'rgba(0, 0, 0, 0.45)',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+              }}
+            >
+              {previewModal.images.map((imgUrl, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setPreviewModal((prev) => prev ? { ...prev, currentIndex: idx } : null)}
+                  style={{
+                    padding: 0,
+                    background: 'transparent',
+                    border: idx === previewModal.currentIndex ? '2.5px solid var(--omni-red, #dc2626)' : '2px solid transparent',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    opacity: idx === previewModal.currentIndex ? 1 : 0.6,
+                    transform: idx === previewModal.currentIndex ? 'scale(1.05)' : 'none',
+                    transition: 'all 0.15s ease',
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                  }}
+                >
+                  <img
+                    src={imgUrl}
+                    alt={`Thumb ${idx + 1}`}
+                    style={{
+                      width: '56px',
+                      height: '56px',
+                      objectFit: 'cover',
+                      display: 'block',
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ------------------------------------------------------------- */}
       {/* MAIN CONTAINER CARD FOR PRODUCT LIST BUILDER */}
       {/* ------------------------------------------------------------- */}
       <div 
         className="no-print"
         style={{
-          background: 'rgba(24, 24, 27, 0.72)',
+          background: 'var(--bg-card, rgba(24, 24, 27, 0.72))',
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          border: '1px solid var(--border-color, rgba(255, 255, 255, 0.08))',
           borderRadius: '16px',
           padding: '1.5rem',
-          boxShadow: '0 4px 24px -1px rgba(0, 0, 0, 0.45)'
+          boxShadow: 'var(--shadow-card, 0 4px 24px -1px rgba(0, 0, 0, 0.45))'
         }}
       >
         {/* TOP BAR: Title & Action Buttons */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', paddingBottom: '1.25rem', borderBottom: '1px solid #27272a' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', paddingBottom: '1.25rem', borderBottom: '1px solid var(--border-color, #27272a)' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#dc2626', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>
               <Sparkles style={{ width: '16px', height: '16px' }} />
               <span>Sourcing List Creator & Cost Engine</span>
             </div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.5px', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary, #ffffff)', letterSpacing: '-0.5px', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
               <Package style={{ width: '28px', height: '28px', color: '#dc2626' }} />
               Product List Builder
             </h1>
-            <p style={{ color: '#a1a1aa', fontSize: '0.85rem', marginTop: '4px', margin: 0 }}>
+            <p style={{ color: 'var(--text-muted, #a1a1aa)', fontSize: '0.85rem', marginTop: '4px', margin: 0 }}>
               Add products sequentially, calculate live total weight & price, and export as an A4 formatted PDF.
             </p>
           </div>
@@ -1056,9 +1611,50 @@ export default function ProductListBuilder({
               <span>{savingToServer ? 'Saving...' : 'Save List'}</span>
             </button>
 
+            {/* WhatsApp Share Action Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (items.length === 0) {
+                  showToast('⚠️ Please add at least one product before sharing to WhatsApp!');
+                  return;
+                }
+                setShowWhatsAppModal(true);
+              }}
+              style={{
+                ...buttonActionStyle,
+                backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                border: '1px solid rgba(34, 197, 94, 0.4)',
+                color: '#4ade80'
+              }}
+              title="Share quotation directly to WhatsApp with live preview"
+            >
+              <MessageSquare style={{ width: '16px', height: '16px', color: '#22c55e' }} />
+              <span>WhatsApp</span>
+            </button>
+
+            {/* Direct WhatsApp VIP Group Link Button */}
+            <a
+              href={WHATSAPP_GROUP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                ...buttonActionStyle,
+                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                border: '1px solid rgba(34, 197, 94, 0.35)',
+                color: '#86efac',
+                textDecoration: 'none'
+              }}
+              title="Join or Open OMNI WhatsApp VIP Sourcing Group"
+            >
+              <span style={{ fontSize: '0.95rem' }}>💬</span>
+              <span>VIP Group</span>
+            </a>
+
             <button
               onClick={handleShareSummary}
               style={buttonActionStyle}
+              title="Copy plain text summary to clipboard"
             >
               <Share2 style={{ width: '16px', height: '16px', color: '#c084fc' }} />
               <span>Copy Text</span>
@@ -1072,27 +1668,49 @@ export default function ProductListBuilder({
               <span>CSV</span>
             </button>
 
-            <button
-              onClick={handleDownloadA4Pdf}
-              disabled={downloadingPdf}
-              style={{
-                padding: '9px 18px',
-                borderRadius: '10px',
-                background: 'linear-gradient(135deg, #dc2626 0%, #990000 100%)',
-                color: '#ffffff',
-                fontSize: '0.85rem',
-                fontWeight: 700,
-                border: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                cursor: 'pointer',
-                boxShadow: '0 0 15px rgba(220, 38, 38, 0.4)'
-              }}
-            >
-              <FileText style={{ width: '16px', height: '16px' }} />
-              <span>{downloadingPdf ? 'Exporting PDF...' : 'Download A4 PDF'}</span>
-            </button>
+            {/* PDF Mode Selector & Download Button Combo */}
+            <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'var(--bg-surface, #18181b)', border: '1px solid var(--border-color, #3f3f46)', borderRadius: '10px', padding: '2px', gap: '4px' }}>
+              <select
+                value={pdfExportMode}
+                onChange={(e) => setPdfExportMode(e.target.value as any)}
+                title="Select single-page or multi-page PDF mode"
+                style={{
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-primary, #e2e8f0)',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  padding: '6px 8px',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="single_page" style={{ backgroundColor: 'var(--bg-card, #18181b)', color: 'var(--text-primary, #ffffff)' }}>📄 1-Page Summary</option>
+                <option value="multi_page" style={{ backgroundColor: 'var(--bg-card, #18181b)', color: 'var(--text-primary, #ffffff)' }}>📑 Multi-Page Flow</option>
+              </select>
+
+              <button
+                onClick={handleDownloadA4Pdf}
+                disabled={downloadingPdf}
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #dc2626 0%, #990000 100%)',
+                  color: '#ffffff',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                  boxShadow: '0 0 15px rgba(220, 38, 38, 0.4)'
+                }}
+              >
+                <FileText style={{ width: '15px', height: '15px' }} />
+                <span>{downloadingPdf ? 'Exporting...' : 'Download PDF'}</span>
+              </button>
+            </div>
 
             <button
               onClick={handleNativePrint}
@@ -1107,10 +1725,11 @@ export default function ProductListBuilder({
         {/* ------------------------------------------------------------- */}
         {/* LIST SPECIFICATION FORM AT THE VERY TOP */}
         {/* ------------------------------------------------------------- */}
-        <div style={{ marginTop: '1.25rem', backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1.25rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+        <div style={{ marginTop: '1.25rem', backgroundColor: 'var(--bg-surface, #09090b)', border: '1px solid var(--border-color, #27272a)', borderRadius: '12px', padding: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+
             {/* List Name */}
-            <div style={{ gridColumn: 'span 2' }}>
+            <div>
               <label style={labelStyle}>
                 <Tag style={{ width: '14px', height: '14px', color: '#f87171' }} />
                 Product List Name <span style={{ color: '#dc2626' }}>*</span>
@@ -1176,7 +1795,7 @@ export default function ProductListBuilder({
                 <select
                   value={freightUnit}
                   onChange={(e) => setFreightUnit(e.target.value as any)}
-                  style={{ ...inputStyle, width: '105px', backgroundColor: '#18181b', fontWeight: 700 }}
+                  style={{ ...inputStyle, width: '105px', backgroundColor: 'var(--bg-card, #18181b)', fontWeight: 700 }}
                 >
                   <option value="per_gm">Tk / gm</option>
                   <option value="per_kg">Tk / kg</option>
@@ -1188,28 +1807,28 @@ export default function ProductListBuilder({
                 <button
                   type="button"
                   onClick={() => { setFreightRate('1.2'); setFreightUnit('per_gm'); }}
-                  style={{ padding: '2px 6px', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: freightRate === '1.2' && freightUnit === 'per_gm' ? 'rgba(245, 158, 11, 0.2)' : '#27272a', border: freightRate === '1.2' && freightUnit === 'per_gm' ? '1px solid #fbbf24' : '1px solid #3f3f46', color: '#fbbf24', cursor: 'pointer', fontWeight: 700 }}
+                  style={{ padding: '2px 6px', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: freightRate === '1.2' && freightUnit === 'per_gm' ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-card, #27272a)', border: freightRate === '1.2' && freightUnit === 'per_gm' ? '1px solid #fbbf24' : '1px solid var(--border-color, #3f3f46)', color: '#fbbf24', cursor: 'pointer', fontWeight: 700 }}
                 >
                   1.2 Tk/gm (Air)
                 </button>
                 <button
                   type="button"
                   onClick={() => { setFreightRate('1.0'); setFreightUnit('per_gm'); }}
-                  style={{ padding: '2px 6px', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: freightRate === '1.0' && freightUnit === 'per_gm' ? 'rgba(245, 158, 11, 0.2)' : '#27272a', border: freightRate === '1.0' && freightUnit === 'per_gm' ? '1px solid #fbbf24' : '1px solid #3f3f46', color: '#a1a1aa', cursor: 'pointer' }}
+                  style={{ padding: '2px 6px', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: freightRate === '1.0' && freightUnit === 'per_gm' ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-card, #27272a)', border: freightRate === '1.0' && freightUnit === 'per_gm' ? '1px solid #fbbf24' : '1px solid var(--border-color, #3f3f46)', color: 'var(--text-muted, #a1a1aa)', cursor: 'pointer' }}
                 >
                   1.0 Tk/gm
                 </button>
                 <button
                   type="button"
                   onClick={() => { setFreightRate('850'); setFreightUnit('per_kg'); }}
-                  style={{ padding: '2px 6px', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: freightRate === '850' && freightUnit === 'per_kg' ? 'rgba(245, 158, 11, 0.2)' : '#27272a', border: freightRate === '850' && freightUnit === 'per_kg' ? '1px solid #fbbf24' : '1px solid #3f3f46', color: '#a1a1aa', cursor: 'pointer' }}
+                  style={{ padding: '2px 6px', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: freightRate === '850' && freightUnit === 'per_kg' ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-card, #27272a)', border: freightRate === '850' && freightUnit === 'per_kg' ? '1px solid #fbbf24' : '1px solid var(--border-color, #3f3f46)', color: 'var(--text-muted, #a1a1aa)', cursor: 'pointer' }}
                 >
                   850 Tk/kg
                 </button>
                 <button
                   type="button"
                   onClick={() => { setFreightRate('350'); setFreightUnit('per_kg'); }}
-                  style={{ padding: '2px 6px', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: freightRate === '350' && freightUnit === 'per_kg' ? 'rgba(245, 158, 11, 0.2)' : '#27272a', border: freightRate === '350' && freightUnit === 'per_kg' ? '1px solid #fbbf24' : '1px solid #3f3f46', color: '#a1a1aa', cursor: 'pointer' }}
+                  style={{ padding: '2px 6px', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: freightRate === '350' && freightUnit === 'per_kg' ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-card, #27272a)', border: freightRate === '350' && freightUnit === 'per_kg' ? '1px solid #fbbf24' : '1px solid var(--border-color, #3f3f46)', color: 'var(--text-muted, #a1a1aa)', cursor: 'pointer' }}
                 >
                   350 Tk/kg (Sea)
                 </button>
@@ -1218,7 +1837,7 @@ export default function ProductListBuilder({
 
             {/* Toggle: Include Weight in Total & Due */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '22px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: '#e2e8f0' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-secondary, #e2e8f0)' }}>
                 <input
                   type="checkbox"
                   checked={includeWeightInTotal}
@@ -1231,7 +1850,7 @@ export default function ProductListBuilder({
 
             {/* List Notes */}
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ ...labelStyle, color: '#a1a1aa' }}>
+              <label style={{ ...labelStyle, color: 'var(--text-muted, #a1a1aa)' }}>
                 <Info style={{ width: '14px', height: '14px', color: '#a1a1aa' }} />
                 List Notes / Sourcing Context (Optional)
               </label>
@@ -1246,122 +1865,14 @@ export default function ProductListBuilder({
           </div>
         </div>
 
-        {/* ------------------------------------------------------------- */}
-        {/* LIVE TOTAL STATS DASHBOARD SUMMARY BAR */}
-        {/* ------------------------------------------------------------- */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginTop: '1.25rem' }}>
-          
-          {/* Card 1: Total Items */}
-          <div style={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#60a5fa' }}>
-              <Package style={{ width: '24px', height: '24px' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Total Items</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#ffffff' }}>
-                {totalItemsCount} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>({totalQuantity} pcs)</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 2: Total Weight */}
-          <div style={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#fbbf24' }}>
-              <Scale style={{ width: '24px', height: '24px' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Total Weight</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fbbf24' }}>
-                {totalWeightKg.toFixed(3)} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>kg</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 3: Total Product Value */}
-          <div style={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#34d399' }}>
-              <Coins style={{ width: '24px', height: '24px' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Product Value</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#34d399' }}>
-                ৳{totalProductPriceBdt.toLocaleString()} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>BDT</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 4: Total Weight Price (Freight) */}
-          <div style={{ backgroundColor: '#09090b', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(245, 158, 11, 0.18)', border: '1px solid rgba(245, 158, 11, 0.4)', color: '#fbbf24' }}>
-              <Scale style={{ width: '24px', height: '24px' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.7rem', color: '#fbbf24', fontWeight: 700, textTransform: 'uppercase' }}>
-                Weight Price (Freight)
-              </div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fbbf24' }}>
-                ৳{totalWeightPriceBdt.toLocaleString()} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>BDT</span>
-              </div>
-              <div style={{ fontSize: '0.65rem', color: '#a1a1aa', marginTop: '2px' }}>
-                @ ৳{freightRate}/{freightUnit === 'per_gm' ? 'gm' : 'kg'}
-              </div>
-            </div>
-          </div>
-
-          {/* Card 5: Combined Grand Total */}
-          <div style={{ backgroundColor: '#09090b', border: '1px solid rgba(220, 38, 38, 0.4)', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(220, 38, 38, 0.15)', border: '1px solid rgba(220, 38, 38, 0.3)', color: '#f87171' }}>
-              <Sparkles style={{ width: '24px', height: '24px' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.7rem', color: '#f87171', fontWeight: 700, textTransform: 'uppercase' }}>
-                {includeWeightInTotal ? 'Grand Total (Prod + Wt)' : 'Order Total (Prod Only)'}
-              </div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#ffffff' }}>
-                ৳{effectiveTotalOrderBdt.toLocaleString()} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>BDT</span>
-              </div>
-              <div style={{ fontSize: '0.65rem', color: '#a1a1aa', marginTop: '2px' }}>
-                ৳{totalProductPriceBdt.toLocaleString()} + ৳{totalWeightPriceBdt.toLocaleString()}
-              </div>
-            </div>
-          </div>
-
-          {/* Card 6: Total Customer Paid */}
-          <div style={{ backgroundColor: '#09090b', border: '1px solid rgba(16, 185, 129, 0.4)', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(16, 185, 129, 0.18)', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#34d399' }}>
-              <Wallet style={{ width: '24px', height: '24px' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.7rem', color: '#34d399', fontWeight: 700, textTransform: 'uppercase' }}>Total Customer Paid</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#34d399' }}>
-                ৳{totalPaidBdt.toLocaleString()} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>BDT</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 7: Outstanding Customer Due */}
-          <div style={{ backgroundColor: '#09090b', border: `1px solid ${totalDueBdt > 0 ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.3)'}`, borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: totalDueBdt > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)', border: `1px solid ${totalDueBdt > 0 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`, color: totalDueBdt > 0 ? '#f87171' : '#34d399' }}>
-              {totalDueBdt > 0 ? <AlertCircle style={{ width: '24px', height: '24px' }} /> : <CheckCircle2 style={{ width: '24px', height: '24px' }} />}
-            </div>
-            <div>
-              <div style={{ fontSize: '0.7rem', color: totalDueBdt > 0 ? '#f87171' : '#34d399', fontWeight: 700, textTransform: 'uppercase' }}>Outstanding Due</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: totalDueBdt > 0 ? '#f87171' : '#34d399' }}>
-                ৳{totalDueBdt.toLocaleString()} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#a1a1aa' }}>BDT</span>
-              </div>
-            </div>
-          </div>
-
-        </div>
-
         {/* Payment Quick Actions Bar */}
         {items.length > 0 && (
           <div
             style={{
               marginTop: '1rem',
               padding: '10px 14px',
-              backgroundColor: '#09090b',
-              border: '1px solid #27272a',
+              backgroundColor: 'var(--bg-surface, #09090b)',
+              border: '1px solid var(--border-color, #27272a)',
               borderRadius: '12px',
               display: 'flex',
               alignItems: 'center',
@@ -1372,7 +1883,7 @@ export default function ProductListBuilder({
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <Wallet style={{ width: '18px', height: '18px', color: '#10b981' }} />
-              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffffff' }}>Customer Payment Status:</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary, #ffffff)' }}>Customer Payment Status:</span>
               <span style={{ fontSize: '0.8rem', padding: '2px 8px', borderRadius: '6px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#34d399', fontWeight: 800, border: '1px solid rgba(16, 185, 129, 0.3)' }}>
                 ৳{totalPaidBdt.toLocaleString()} Paid ({effectiveTotalOrderBdt > 0 ? Math.round((totalPaidBdt / effectiveTotalOrderBdt) * 100) : 0}%)
               </span>
@@ -1457,13 +1968,13 @@ export default function ProductListBuilder({
         {/* ------------------------------------------------------------- */}
         {/* ADD PRODUCT FORM (SEQUENTIAL ENTRY) */}
         {/* ------------------------------------------------------------- */}
-        <div style={{ marginTop: '1.5rem', backgroundColor: '#09090b', border: '1px solid rgba(220, 38, 38, 0.4)', borderRadius: '12px', padding: '1.25rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '1px solid #27272a' }}>
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ marginTop: '1.5rem', backgroundColor: 'var(--bg-surface, #09090b)', border: '1px solid rgba(220, 38, 38, 0.4)', borderRadius: '12px', padding: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border-color, #27272a)' }}>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary, #ffffff)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Plus style={{ width: '20px', height: '20px', color: '#dc2626' }} />
               Add Product Sequentially
             </h2>
-            <span style={{ fontSize: '0.75rem', color: '#a1a1aa' }}>Products are added step-by-step to the list below</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #a1a1aa)' }}>Products are added step-by-step to the list below</span>
           </div>
 
           <form onSubmit={handleAddProduct} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
@@ -1518,7 +2029,7 @@ export default function ProductListBuilder({
                 <select
                   value={newCurrency}
                   onChange={(e) => setNewCurrency(e.target.value as any)}
-                  style={{ ...inputStyle, width: '95px', backgroundColor: '#18181b', fontWeight: 700 }}
+                  style={{ ...inputStyle, width: '95px', backgroundColor: 'var(--bg-card, #18181b)', fontWeight: 700 }}
                 >
                   <option value="RMB">RMB (¥)</option>
                   <option value="BDT">BDT (৳)</option>
@@ -1647,7 +2158,7 @@ export default function ProductListBuilder({
                 <select
                   value={newWeightUnit}
                   onChange={(e) => setNewWeightUnit(e.target.value as any)}
-                  style={{ ...inputStyle, width: '70px', backgroundColor: '#18181b', fontWeight: 700 }}
+                  style={{ ...inputStyle, width: '70px', backgroundColor: 'var(--bg-card, #18181b)', fontWeight: 700 }}
                 >
                   <option value="gm">gm</option>
                   <option value="kg">kg</option>
@@ -1730,35 +2241,153 @@ export default function ProductListBuilder({
               />
             </div>
 
-            {/* Image URL & File Upload */}
+            {/* Product Images (Multiple Images Supported) */}
             <div style={{ gridColumn: 'span 2' }}>
-              <label style={labelStyle}>
-                <ImageIcon style={{ width: '14px', height: '14px', color: '#34d399' }} />
-                Product Image (URL or Upload)
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>
+                  <ImageIcon style={{ width: '14px', height: '14px', color: '#34d399' }} />
+                  Product Images {newImages.length > 0 && `(${newImages.length} added)`}
+                </label>
+                {newImages.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setNewImages([])}
+                    style={{ background: 'none', border: 'none', color: '#f87171', fontSize: '0.72rem', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Clear all images
+                  </button>
+                )}
+              </div>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <input
                   type="url"
                   value={newImageUrl}
                   onChange={(e) => setNewImageUrl(e.target.value)}
-                  placeholder="https://... image URL"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddImageUrl();
+                    }
+                  }}
+                  placeholder="Paste image URL & click + Add, or upload files..."
                   style={{ ...inputStyle, flex: 1 }}
                 />
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{ ...buttonActionStyle, padding: '8px 12px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                  onClick={handleAddImageUrl}
+                  disabled={!newImageUrl.trim()}
+                  style={{
+                    ...buttonActionStyle,
+                    padding: '8px 12px',
+                    fontSize: '0.8rem',
+                    whiteSpace: 'nowrap',
+                    opacity: newImageUrl.trim() ? 1 : 0.5
+                  }}
                 >
-                  Upload File
+                  + Add URL
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{ ...buttonActionStyle, padding: '8px 12px', fontSize: '0.8rem', whiteSpace: 'nowrap', backgroundColor: 'var(--bg-card, #27272a)' }}
+                >
+                  Upload Photos
                 </button>
                 <input
                   type="file"
                   ref={fileInputRef}
                   onChange={handleImageFileUpload}
+                  multiple
                   accept="image/*"
                   style={{ display: 'none' }}
                 />
               </div>
+
+              {/* Added Images Thumbnail Strip */}
+              {newImages.length > 0 && (
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px', padding: '8px', backgroundColor: 'var(--bg-card, #18181b)', borderRadius: '8px', border: '1px solid var(--border-color, #27272a)' }}>
+                  {newImages.map((img, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        position: 'relative',
+                        width: '52px',
+                        height: '52px',
+                        borderRadius: '6px',
+                        overflow: 'hidden',
+                        border: '1px solid var(--border-color, #3f3f46)',
+                        backgroundColor: 'var(--bg-surface, #09090b)',
+                        flexShrink: 0
+                      }}
+                    >
+                      <img
+                        src={img}
+                        alt={`Photo ${idx + 1}`}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveNewImage(idx)}
+                        title="Remove this photo"
+                        style={{
+                          position: 'absolute',
+                          top: '2px',
+                          right: '2px',
+                          width: '16px',
+                          height: '16px',
+                          borderRadius: '50%',
+                          backgroundColor: 'rgba(0,0,0,0.8)',
+                          color: '#ffffff',
+                          border: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          fontSize: '10px',
+                          lineHeight: '1',
+                          padding: 0
+                        }}
+                      >
+                        ✕
+                      </button>
+                      <span
+                        style={{
+                          position: 'absolute',
+                          bottom: '1px',
+                          left: '2px',
+                          fontSize: '8px',
+                          color: '#ffffff',
+                          backgroundColor: 'rgba(0,0,0,0.65)',
+                          padding: '0 3px',
+                          borderRadius: '2px'
+                        }}
+                      >
+                        #{idx + 1}
+                      </span>
+                    </div>
+                  ))}
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      width: '52px',
+                      height: '52px',
+                      borderRadius: '6px',
+                      border: '1px dashed #52525b',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      color: '#a1a1aa',
+                      fontSize: '9px',
+                      gap: '2px'
+                    }}
+                  >
+                    <Plus style={{ width: '14px', height: '14px' }} />
+                    <span>More</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Details & Specs */}
@@ -1815,9 +2444,9 @@ export default function ProductListBuilder({
                     padding: '3px 8px',
                     fontSize: '0.7rem',
                     fontWeight: 700,
-                    backgroundColor: '#27272a',
+                    backgroundColor: 'var(--bg-card, #27272a)',
                     color: '#34d399',
-                    border: '1px solid #3f3f46',
+                    border: '1px solid var(--border-color, #3f3f46)',
                     borderRadius: '4px',
                     cursor: 'pointer'
                   }}
@@ -1858,7 +2487,7 @@ export default function ProductListBuilder({
         {/* ------------------------------------------------------------- */}
         <div style={{ marginTop: '1.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary, #ffffff)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Layers style={{ width: '20px', height: '20px', color: '#f87171' }} />
               Products in List ({items.length})
             </h3>
@@ -1875,11 +2504,11 @@ export default function ProductListBuilder({
           </div>
 
           {items.length === 0 ? (
-            <div style={{ backgroundColor: '#09090b', border: '1px dashed #27272a', borderRadius: '12px', padding: '3rem 1rem', textAlign: 'center' }}>
-              <Package style={{ width: '48px', height: '48px', color: '#3f3f46', margin: '0 auto 12px auto' }} />
-              <p style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '1rem', margin: 0 }}>Your product list is currently empty</p>
-              <p style={{ color: '#71717a', fontSize: '0.85rem', marginTop: '6px', margin: 0 }}>
-                Use the sequential product form above or click "+ Add to Product List" on any search result card!
+            <div style={{ backgroundColor: 'var(--bg-surface, #09090b)', border: '1px dashed var(--border-color, #27272a)', borderRadius: '12px', padding: '3rem 1rem', textAlign: 'center' }}>
+              <Package style={{ width: '48px', height: '48px', color: 'var(--border-color, #3f3f46)', margin: '0 auto 12px auto' }} />
+              <p style={{ color: 'var(--text-primary, #e2e8f0)', fontWeight: 700, fontSize: '1rem', margin: 0 }}>Your product list is currently empty</p>
+              <p style={{ color: 'var(--text-muted, #71717a)', fontSize: '0.85rem', marginTop: '6px', margin: 0 }}>
+                Use the sequential product form above or add products from Categories & Calculator!
               </p>
             </div>
           ) : (
@@ -1899,8 +2528,8 @@ export default function ProductListBuilder({
                   <div
                     key={item.id}
                     style={{
-                      backgroundColor: '#09090b',
-                      border: '1px solid #27272a',
+                      backgroundColor: 'var(--bg-surface, #09090b)',
+                      border: '1px solid var(--border-color, #27272a)',
                       borderRadius: '12px',
                       padding: '1rem',
                       display: 'flex',
@@ -1912,29 +2541,96 @@ export default function ProductListBuilder({
                   >
                     {/* Item Serial, Image & Details */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: '240px', flex: 1 }}>
-                      <span style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#18181b', border: '1px solid #3f3f46', color: '#f8fafc', fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <span style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: 'var(--bg-card, #18181b)', border: '1px solid var(--border-color, #3f3f46)', color: 'var(--text-primary, #f8fafc)', fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         {index + 1}
                       </span>
 
-                      <div style={{ width: '56px', height: '56px', borderRadius: '8px', backgroundColor: '#18181b', border: '1px solid #27272a', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {item.image_url ? (
-                          <img
-                            src={item.image_url}
-                            alt={item.title}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            onError={(e) => {
-                              (e.target as HTMLElement).style.display = 'none';
-                            }}
+                      {/* Image container & Multiple Images */}
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                        <div 
+                          onClick={() => {
+                            const allImgs = (item.images && item.images.length > 0) ? item.images : (item.image_url ? [item.image_url] : []);
+                            if (allImgs.length > 0) {
+                              setPreviewModal({
+                                title: item.title,
+                                images: allImgs,
+                                currentIndex: 0,
+                                productUrl: item.product_url,
+                              });
+                            }
+                          }}
+                          title={item.image_url || (item.images && item.images.length > 0) ? 'Click to view photo in lightbox' : undefined}
+                          style={{
+                            position: 'relative',
+                            width: '56px',
+                            height: '56px',
+                            borderRadius: '8px',
+                            backgroundColor: 'var(--bg-card, #18181b)',
+                            border: '1px solid var(--border-color, #27272a)',
+                            overflow: 'hidden',
+                            flexShrink: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: item.image_url || (item.images && item.images.length > 0) ? 'pointer' : 'default',
+                          }}
+                        >
+                          {item.image_url ? (
+                            <img
+                              src={item.image_url}
+                              alt={item.title}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            <Package style={{ width: '24px', height: '24px', color: '#71717a' }} />
+                          )}
+                          {item.images && item.images.length > 1 && (
+                            <span style={{ position: 'absolute', bottom: '2px', right: '2px', backgroundColor: 'rgba(0,0,0,0.85)', color: '#ffffff', fontSize: '9px', fontWeight: 800, padding: '1px 4px', borderRadius: '4px' }}>
+                              +{item.images.length - 1}
+                            </span>
+                          )}
+                        </div>
+                        {/* Add extra photos button */}
+                        <div>
+                          <input
+                            type="file"
+                            id={`add-photo-${item.id}`}
+                            multiple
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            onChange={(e) => handleAddImagesToExistingItem(item.id, e)}
                           />
-                        ) : (
-                          <Package style={{ width: '24px', height: '24px', color: '#71717a' }} />
-                        )}
+                          <button
+                            type="button"
+                            onClick={() => document.getElementById(`add-photo-${item.id}`)?.click()}
+                            title="Add more photos to this product"
+                            style={{
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              backgroundColor: '#27272a',
+                              border: '1px solid #3f3f46',
+                              color: '#a1a1aa',
+                              fontSize: '0.65rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '2px'
+                            }}
+                          >
+                            <Plus style={{ width: '10px', height: '10px', color: '#34d399' }} />
+                            <span>Photo</span>
+                          </button>
+                        </div>
                       </div>
 
                       {/* Info */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>
+                          <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary, #ffffff)', margin: 0 }}>
                             {item.title}
                           </h4>
                           {item.platform && (
@@ -1945,12 +2641,43 @@ export default function ProductListBuilder({
                         </div>
 
                         {item.details && (
-                          <p style={{ fontSize: '0.75rem', color: '#a1a1aa', margin: 0 }}>{item.details}</p>
+                          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted, #a1a1aa)', margin: 0 }}>{item.details}</p>
+                        )}
+
+                        {/* Extra image thumbnails if product has multiple images */}
+                        {item.images && item.images.length > 1 && (
+                          <div style={{ display: 'flex', gap: '4px', marginTop: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.68rem', color: '#71717a' }}>Photos ({item.images.length}):</span>
+                            {item.images.map((img, imgIdx) => (
+                              <div
+                                key={imgIdx}
+                                onClick={() => {
+                                  setPreviewModal({
+                                    title: item.title,
+                                    images: item.images || [img],
+                                    currentIndex: imgIdx,
+                                    productUrl: item.product_url,
+                                  });
+                                }}
+                                title="Click to view photo in lightbox"
+                                style={{
+                                  width: '26px',
+                                  height: '26px',
+                                  borderRadius: '4px',
+                                  overflow: 'hidden',
+                                  border: item.image_url === img ? '2px solid #dc2626' : '1px solid #3f3f46',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              </div>
+                            ))}
+                          </div>
                         )}
 
                         {item.product_url ? (
                           <a
-                            href={item.product_url}
+                            href={formatExternalUrl(item.product_url)}
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{ fontSize: '0.75rem', color: '#60a5fa', textDecoration: 'underline', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}
@@ -1967,17 +2694,17 @@ export default function ProductListBuilder({
                     {/* Quantity Stepper & Calculation Badges */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
                       {/* Stepper */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px', padding: '4px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: 'var(--bg-card, #18181b)', border: '1px solid var(--border-color, #3f3f46)', borderRadius: '8px', padding: '4px' }}>
                         <button
                           onClick={() => handleQuantityChange(item.id, item.quantity - 1)}
-                          style={{ width: '24px', height: '24px', borderRadius: '4px', backgroundColor: '#27272a', color: '#ffffff', fontWeight: 800, fontSize: '0.8rem', border: 'none', cursor: 'pointer' }}
+                          style={{ width: '24px', height: '24px', borderRadius: '4px', backgroundColor: 'var(--bg-surface, #27272a)', color: 'var(--text-primary, #ffffff)', fontWeight: 800, fontSize: '0.8rem', border: 'none', cursor: 'pointer' }}
                         >
                           -
                         </button>
-                        <span style={{ width: '32px', textAlign: 'center', fontSize: '0.85rem', fontWeight: 800, color: '#ffffff' }}>{item.quantity}</span>
+                        <span style={{ width: '32px', textAlign: 'center', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-primary, #ffffff)' }}>{item.quantity}</span>
                         <button
                           onClick={() => handleQuantityChange(item.id, item.quantity + 1)}
-                          style={{ width: '24px', height: '24px', borderRadius: '4px', backgroundColor: '#27272a', color: '#ffffff', fontWeight: 800, fontSize: '0.8rem', border: 'none', cursor: 'pointer' }}
+                          style={{ width: '24px', height: '24px', borderRadius: '4px', backgroundColor: 'var(--bg-surface, #27272a)', color: 'var(--text-primary, #ffffff)', fontWeight: 800, fontSize: '0.8rem', border: 'none', cursor: 'pointer' }}
                         >
                           +
                         </button>
@@ -1992,14 +2719,14 @@ export default function ProductListBuilder({
                         <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fbbf24' }}>
                           ৳{lineWeightPrice.toLocaleString()}
                         </div>
-                        <div style={{ fontSize: '0.65rem', color: '#a1a1aa' }}>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted, #a1a1aa)' }}>
                           {lineTotalWeightKg.toFixed(3)} kg (@ ৳{unitWeightPrice.toFixed(0)}/u)
                         </div>
                       </div>
 
                       {/* Product Price Badge */}
                       <div style={{ textAlign: 'right', minWidth: '95px' }}>
-                        <div style={{ fontSize: '0.62rem', textTransform: 'uppercase', fontWeight: 700, color: '#a1a1aa' }}>
+                        <div style={{ fontSize: '0.62rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted, #a1a1aa)' }}>
                           Product Value
                         </div>
                         <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#34d399' }}>
@@ -2022,7 +2749,7 @@ export default function ProductListBuilder({
                         <div style={{ fontSize: '0.62rem', textTransform: 'uppercase', fontWeight: 700, color: '#f87171' }}>
                           Combined Total
                         </div>
-                        <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#ffffff' }}>
+                        <div style={{ fontSize: '0.95rem', fontWeight: 900, color: 'var(--text-primary, #ffffff)' }}>
                           ৳{combinedLineTotal.toLocaleString()}
                         </div>
                         <div style={{ fontSize: '0.62rem', color: '#94a3b8' }}>
@@ -2036,8 +2763,8 @@ export default function ProductListBuilder({
                           display: 'flex',
                           alignItems: 'center',
                           gap: '10px',
-                          backgroundColor: '#18181b',
-                          border: `1px solid ${itemStatus === 'paid' ? 'rgba(16, 185, 129, 0.4)' : itemStatus === 'partial' ? 'rgba(245, 158, 11, 0.4)' : '#27272a'}`,
+                          backgroundColor: 'var(--bg-card, #18181b)',
+                          border: `1px solid ${itemStatus === 'paid' ? 'rgba(16, 185, 129, 0.4)' : itemStatus === 'partial' ? 'rgba(245, 158, 11, 0.4)' : 'var(--border-color, #27272a)'}`,
                           borderRadius: '10px',
                           padding: '6px 10px'
                         }}
@@ -2079,7 +2806,7 @@ export default function ProductListBuilder({
 
                         {/* Paid Input */}
                         <div>
-                          <div style={{ fontSize: '0.62rem', textTransform: 'uppercase', fontWeight: 700, color: '#a1a1aa' }}>
+                          <div style={{ fontSize: '0.62rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted, #a1a1aa)' }}>
                             Customer Paid
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
@@ -2093,8 +2820,8 @@ export default function ProductListBuilder({
                                 onChange={(e) => handleItemPaidChange(item.id, Number(e.target.value) || 0)}
                                 style={{
                                   width: '90px',
-                                  backgroundColor: '#09090b',
-                                  border: '1px solid #3f3f46',
+                                  backgroundColor: 'var(--bg-surface, #09090b)',
+                                  border: '1px solid var(--border-color, #3f3f46)',
                                   borderRadius: '6px',
                                   padding: '4px 6px',
                                   fontSize: '0.8rem',
@@ -2114,9 +2841,9 @@ export default function ProductListBuilder({
                               style={{
                                 padding: '4px 6px',
                                 borderRadius: '5px',
-                                backgroundColor: '#27272a',
+                                backgroundColor: 'var(--bg-surface, #27272a)',
                                 color: '#34d399',
-                                border: '1px solid #3f3f46',
+                                border: '1px solid var(--border-color, #3f3f46)',
                                 fontSize: '0.68rem',
                                 fontWeight: 700,
                                 cursor: 'pointer'
@@ -2217,25 +2944,25 @@ export default function ProductListBuilder({
       {/* ------------------------------------------------------------- */}
       {showSavedModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div style={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '16px', maxWidth: '600px', width: '100%', padding: '1.5rem', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }}>
+          <div style={{ backgroundColor: 'var(--bg-card, #18181b)', border: '1px solid var(--border-color, #27272a)', borderRadius: '16px', maxWidth: '600px', width: '100%', padding: '1.5rem', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }}>
             
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid #27272a', marginBottom: '1rem' }}>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid var(--border-color, #27272a)', marginBottom: '1rem' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary, #ffffff)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <FolderOpen style={{ width: '20px', height: '20px', color: '#60a5fa' }} />
                 Saved Product Lists
               </h3>
               <button
                 onClick={() => setShowSavedModal(false)}
-                style={{ padding: '6px', backgroundColor: '#27272a', border: 'none', borderRadius: '8px', color: '#a1a1aa', cursor: 'pointer' }}
+                style={{ padding: '6px', backgroundColor: 'var(--bg-surface, #27272a)', border: 'none', borderRadius: '8px', color: 'var(--text-muted, #a1a1aa)', cursor: 'pointer' }}
               >
                 <X style={{ width: '18px', height: '18px' }} />
               </button>
             </div>
 
             {loadingSaved ? (
-              <div style={{ padding: '2rem', textAlign: 'center', color: '#a1a1aa', fontSize: '0.9rem' }}>Loading saved product lists...</div>
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted, #a1a1aa)', fontSize: '0.9rem' }}>Loading saved product lists...</div>
             ) : savedLists.length === 0 ? (
-              <div style={{ padding: '2rem', textAlign: 'center', color: '#a1a1aa', fontSize: '0.9rem' }}>
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted, #a1a1aa)', fontSize: '0.9rem' }}>
                 No saved product lists found on the server. Save your current list to see it here!
               </div>
             ) : (
@@ -2244,11 +2971,11 @@ export default function ProductListBuilder({
                   <div
                     key={list.id}
                     onClick={() => handleLoadList(list)}
-                    style={{ padding: '12px 16px', backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                    style={{ padding: '12px 16px', backgroundColor: 'var(--bg-surface, #09090b)', border: '1px solid var(--border-color, #27272a)', borderRadius: '10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                   >
                     <div>
-                      <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>{list.name}</h4>
-                      <p style={{ fontSize: '0.75rem', color: '#a1a1aa', margin: '4px 0 0 0' }}>
+                      <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary, #ffffff)', margin: 0 }}>{list.name}</h4>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted, #a1a1aa)', margin: '4px 0 0 0' }}>
                         Date: {list.date} | Items: {list.total_items_count} ({list.total_quantity} pcs)
                       </p>
                     </div>
@@ -2278,7 +3005,7 @@ export default function ProductListBuilder({
 
                       <button
                         onClick={(e) => handleDeleteSavedList(list.id, e)}
-                        style={{ padding: '6px', backgroundColor: '#27272a', border: 'none', borderRadius: '6px', color: '#f87171', cursor: 'pointer' }}
+                        style={{ padding: '6px', backgroundColor: 'var(--bg-card, #27272a)', border: 'none', borderRadius: '6px', color: '#f87171', cursor: 'pointer' }}
                       >
                         <Trash2 style={{ width: '16px', height: '16px' }} />
                       </button>
@@ -2297,18 +3024,18 @@ export default function ProductListBuilder({
       {/* ------------------------------------------------------------- */}
       {showDepositModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div style={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '16px', maxWidth: '520px', width: '100%', padding: '1.5rem', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }}>
+          <div style={{ backgroundColor: 'var(--bg-card, #18181b)', border: '1px solid var(--border-color, #27272a)', borderRadius: '16px', maxWidth: '520px', width: '100%', padding: '1.5rem', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }}>
             
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid #27272a', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid var(--border-color, #27272a)', marginBottom: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8' }}>
                   <CreditCard style={{ width: '20px', height: '20px' }} />
                 </div>
                 <div>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary, #ffffff)', margin: 0 }}>
                     Record Customer Advance / Deposit
                   </h3>
-                  <p style={{ fontSize: '0.75rem', color: '#a1a1aa', margin: '2px 0 0 0' }}>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted, #a1a1aa)', margin: '2px 0 0 0' }}>
                     Allocate advance payment across product line items
                   </p>
                 </div>
@@ -2316,7 +3043,7 @@ export default function ProductListBuilder({
               <button
                 type="button"
                 onClick={() => setShowDepositModal(false)}
-                style={{ padding: '6px', backgroundColor: '#27272a', border: 'none', borderRadius: '8px', color: '#a1a1aa', cursor: 'pointer' }}
+                style={{ padding: '6px', backgroundColor: 'var(--bg-surface, #27272a)', border: 'none', borderRadius: '8px', color: 'var(--text-muted, #a1a1aa)', cursor: 'pointer' }}
               >
                 <X style={{ width: '18px', height: '18px' }} />
               </button>
@@ -2324,15 +3051,15 @@ export default function ProductListBuilder({
 
             {/* Quick Metrics */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '1rem' }}>
-              <div style={{ backgroundColor: '#09090b', padding: '8px 10px', borderRadius: '8px', border: '1px solid #27272a' }}>
-                <div style={{ fontSize: '0.65rem', color: '#a1a1aa', textTransform: 'uppercase', fontWeight: 700 }}>Total Order</div>
-                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#ffffff', marginTop: '2px' }}>৳{effectiveTotalOrderBdt.toLocaleString()}</div>
+              <div style={{ backgroundColor: 'var(--bg-surface, #09090b)', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color, #27272a)' }}>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted, #a1a1aa)', textTransform: 'uppercase', fontWeight: 700 }}>Total Order</div>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary, #ffffff)', marginTop: '2px' }}>৳{effectiveTotalOrderBdt.toLocaleString()}</div>
               </div>
-              <div style={{ backgroundColor: '#09090b', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+              <div style={{ backgroundColor: 'var(--bg-surface, #09090b)', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
                 <div style={{ fontSize: '0.65rem', color: '#34d399', textTransform: 'uppercase', fontWeight: 700 }}>Current Paid</div>
                 <div style={{ fontSize: '1rem', fontWeight: 800, color: '#34d399', marginTop: '2px' }}>৳{totalPaidBdt.toLocaleString()}</div>
               </div>
-              <div style={{ backgroundColor: '#09090b', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+              <div style={{ backgroundColor: 'var(--bg-surface, #09090b)', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
                 <div style={{ fontSize: '0.65rem', color: '#f87171', textTransform: 'uppercase', fontWeight: 700 }}>Current Due</div>
                 <div style={{ fontSize: '1rem', fontWeight: 800, color: '#f87171', marginTop: '2px' }}>৳{totalDueBdt.toLocaleString()}</div>
               </div>
@@ -2364,21 +3091,21 @@ export default function ProductListBuilder({
                 <button
                   type="button"
                   onClick={() => setDepositAmountInput(String(totalDueBdt))}
-                  style={{ padding: '4px 10px', borderRadius: '6px', backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#34d399', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                  style={{ padding: '4px 10px', borderRadius: '6px', backgroundColor: 'var(--bg-surface, #27272a)', border: '1px solid var(--border-color, #3f3f46)', color: '#34d399', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
                 >
                   Pay Full Balance (৳{totalDueBdt.toLocaleString()})
                 </button>
                 <button
                   type="button"
                   onClick={() => setDepositAmountInput(String(Math.round(effectiveTotalOrderBdt * 0.5)))}
-                  style={{ padding: '4px 10px', borderRadius: '6px', backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#60a5fa', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                  style={{ padding: '4px 10px', borderRadius: '6px', backgroundColor: 'var(--bg-surface, #27272a)', border: '1px solid var(--border-color, #3f3f46)', color: '#60a5fa', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
                 >
                   50% Advance (৳{Math.round(effectiveTotalOrderBdt * 0.5).toLocaleString()})
                 </button>
                 <button
                   type="button"
                   onClick={() => setDepositAmountInput(String(Math.round(effectiveTotalOrderBdt * 0.3)))}
-                  style={{ padding: '4px 10px', borderRadius: '6px', backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#fbbf24', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                  style={{ padding: '4px 10px', borderRadius: '6px', backgroundColor: 'var(--bg-surface, #27272a)', border: '1px solid var(--border-color, #3f3f46)', color: '#fbbf24', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
                 >
                   30% Advance (৳{Math.round(effectiveTotalOrderBdt * 0.3).toLocaleString()})
                 </button>
@@ -2386,12 +3113,12 @@ export default function ProductListBuilder({
             </div>
 
             {/* Allocation Strategy */}
-            <div style={{ marginBottom: '1.25rem', backgroundColor: '#09090b', padding: '10px 12px', borderRadius: '8px', border: '1px solid #27272a' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '8px' }}>
+            <div style={{ marginBottom: '1.25rem', backgroundColor: 'var(--bg-surface, #09090b)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color, #27272a)' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary, #e2e8f0)', marginBottom: '8px' }}>
                 Allocation Mode:
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: '#f8fafc' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-primary, #f8fafc)' }}>
                   <input
                     type="radio"
                     name="allocation_strategy"
@@ -2400,7 +3127,7 @@ export default function ProductListBuilder({
                   />
                   <span><strong>Sequential:</strong> Clear items top-to-bottom in order</span>
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: '#f8fafc' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-primary, #f8fafc)' }}>
                   <input
                     type="radio"
                     name="allocation_strategy"
@@ -2449,242 +3176,518 @@ export default function ProductListBuilder({
       )}
 
       {/* ------------------------------------------------------------- */}
+      {/* 💬 WHATSAPP DIRECT QUOTATION SHARING MODAL */}
+      {/* ------------------------------------------------------------- */}
+      {showWhatsAppModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ backgroundColor: 'var(--bg-card, #18181b)', border: '1px solid var(--border-color, #27272a)', borderRadius: '16px', maxWidth: '580px', width: '100%', padding: '1.5rem', boxShadow: '0 20px 40px rgba(0,0,0,0.8)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid var(--border-color, #27272a)', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(34, 197, 94, 0.15)', color: '#22c55e' }}>
+                  <MessageSquare style={{ width: '20px', height: '20px' }} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary, #ffffff)', margin: 0 }}>
+                    Share Quotation via WhatsApp
+                  </h3>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted, #a1a1aa)', margin: '2px 0 0 0' }}>
+                    Send instant formatted quotation directly to customer's WhatsApp
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWhatsAppModal(false)}
+                style={{ padding: '6px', backgroundColor: 'var(--bg-surface, #27272a)', border: 'none', borderRadius: '8px', color: 'var(--text-muted, #a1a1aa)', cursor: 'pointer' }}
+              >
+                <X style={{ width: '18px', height: '18px' }} />
+              </button>
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1, paddingRight: '4px' }}>
+              {/* Phone Number Input */}
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={labelStyle}>
+                  Customer WhatsApp Phone Number (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={whatsAppPhone}
+                  onChange={(e) => setWhatsAppPhone(e.target.value)}
+                  placeholder="e.g. 8801712345678 or 01712345678 (leave blank to select in WhatsApp)"
+                  style={inputStyle}
+                />
+                <p style={{ fontSize: '0.7rem', color: 'var(--text-muted, #71717a)', margin: '4px 0 0 0' }}>
+                  Include country code (e.g. 880 for Bangladesh) or leave blank to choose contact manually in WhatsApp.
+                </p>
+              </div>
+
+              {/* Message Options */}
+              <div style={{ backgroundColor: 'var(--bg-surface, #09090b)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color, #27272a)', marginBottom: '1rem' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary, #e2e8f0)', marginBottom: '8px' }}>
+                  Quotation Content Options:
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-primary, #f8fafc)' }}>
+                    <input
+                      type="checkbox"
+                      checked={waIncludeLinks}
+                      onChange={(e) => setWaIncludeLinks(e.target.checked)}
+                      style={{ accentColor: '#22c55e' }}
+                    />
+                    <span>Include Product Links</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-primary, #f8fafc)' }}>
+                    <input
+                      type="checkbox"
+                      checked={waIncludeFreight}
+                      onChange={(e) => setWaIncludeFreight(e.target.checked)}
+                      style={{ accentColor: '#22c55e' }}
+                    />
+                    <span>Include Weight & Freight</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-primary, #f8fafc)' }}>
+                    <input
+                      type="checkbox"
+                      checked={waIncludeFacebook}
+                      onChange={(e) => setWaIncludeFacebook(e.target.checked)}
+                      style={{ accentColor: '#22c55e' }}
+                    />
+                    <span>Include Facebook Page</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-primary, #f8fafc)' }}>
+                    <input
+                      type="checkbox"
+                      checked={waIncludeGroup}
+                      onChange={(e) => setWaIncludeGroup(e.target.checked)}
+                      style={{ accentColor: '#22c55e' }}
+                    />
+                    <span>Include VIP WhatsApp Group</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Live Preview Box */}
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>
+                    Live Message Preview:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleCopyWhatsAppText}
+                    style={{ fontSize: '0.72rem', color: '#4ade80', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
+                  >
+                    <Copy style={{ width: '12px', height: '12px' }} />
+                    Copy
+                  </button>
+                </div>
+                <pre
+                  style={{
+                    backgroundColor: 'var(--bg-surface, #09090b)',
+                    border: '1px solid var(--border-color, #27272a)',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    fontSize: '0.75rem',
+                    color: 'var(--text-secondary, #d4d4d8)',
+                    fontFamily: 'Consolas, Monaco, monospace',
+                    whiteSpace: 'pre-wrap',
+                    maxHeight: '180px',
+                    overflowY: 'auto',
+                    margin: 0
+                  }}
+                >
+                  {generateWhatsAppMessage()}
+                </pre>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', paddingTop: '1rem', borderTop: '1px solid var(--border-color, #27272a)' }}>
+              <button
+                type="button"
+                onClick={openWhatsAppGroup}
+                style={{
+                  ...buttonActionStyle,
+                  backgroundColor: 'rgba(34, 197, 94, 0.12)',
+                  border: '1px solid rgba(34, 197, 94, 0.35)',
+                  color: '#86efac',
+                }}
+                title="Open or Join OMNI WhatsApp VIP Group"
+              >
+                <span>💬</span>
+                <span>Open VIP Group</span>
+              </button>
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowWhatsAppModal(false)}
+                  style={{ ...buttonActionStyle, backgroundColor: 'transparent' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopyWhatsAppText}
+                  style={{ ...buttonActionStyle, backgroundColor: 'var(--bg-surface, #27272a)' }}
+                >
+                  <Copy style={{ width: '15px', height: '15px', color: 'var(--text-muted, #a1a1aa)' }} />
+                  <span>Copy Text</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendWhatsApp(true)}
+                  style={{
+                    ...buttonActionStyle,
+                    backgroundColor: '#15803d',
+                    color: '#ffffff',
+                    border: '1px solid #22c55e',
+                    fontWeight: 700,
+                  }}
+                  title="Share formatted quotation directly into the WhatsApp VIP Group"
+                >
+                  <span>📲</span>
+                  <span>Post to VIP Group</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendWhatsApp(false)}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: '10px',
+                    background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                    color: '#ffffff',
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    boxShadow: '0 0 15px rgba(34, 197, 94, 0.4)'
+                  }}
+                >
+                  <Send style={{ width: '16px', height: '16px' }} />
+                  <span>Open in WhatsApp</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
       {/* 📄 A4 FORMATTED PRINT & PDF DOCUMENT TEMPLATE */}
       {/* ------------------------------------------------------------- */}
-      <div style={{ display: 'none' }}>
+      <div style={{ position: 'fixed', left: '-9999px', top: 0, opacity: 0, pointerEvents: 'none', zIndex: -100 }}>
         <div
           id="a4-pdf-content"
           style={{
             width: '210mm',
-            minHeight: '297mm',
-            padding: '15mm',
+            minHeight: pdfExportMode === 'single_page' ? '296mm' : undefined,
+            height: pdfExportMode === 'single_page' ? '296mm' : 'auto',
+            maxHeight: pdfExportMode === 'single_page' ? '296mm' : 'none',
+            padding: '7mm 10mm',
             backgroundColor: '#ffffff',
-            color: '#111827',
-            fontFamily: 'Helvetica, Arial, sans-serif',
-            boxSizing: 'border-box'
+            color: '#0f172a',
+            fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif",
+            boxSizing: 'border-box',
+            overflow: pdfExportMode === 'single_page' ? 'hidden' : 'visible',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: pdfExportMode === 'single_page' ? 'space-between' : 'flex-start'
           }}
         >
-          {/* Header */}
-          <div style={{ borderBottom: '2px solid #dc2626', paddingBottom: '12px', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h1 style={{ fontSize: '22px', fontWeight: 'bold', color: '#dc2626', margin: 0 }}>
-                  OMNI SOURCING PRODUCT LIST
-                </h1>
-                <p style={{ fontSize: '11px', color: '#4b5563', margin: '4px 0 0 0' }}>
-                  Product Sourcing, Weight & Payment Statement
-                </p>
+          {/* TOP SECTION: Header + Table */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: pdfExportMode === 'single_page' ? 'hidden' : 'visible' }}>
+            
+            {/* 📄 1-PAGE A4 HEADER: Centered Logo, List Name & Date | Right: QR Code (Facebook Page) */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2.5px solid #dc2626', paddingBottom: '8px', marginBottom: '10px' }}>
+              
+              {/* Left: Official Tag */}
+              <div style={{ width: '110px', flexShrink: 0 }}>
+                <div style={{ display: 'inline-block', border: '1.5px solid #dc2626', borderRadius: '5px', padding: '3px 8px', backgroundColor: '#fef2f2' }}>
+                  <div style={{ fontSize: '8.5px', color: '#dc2626', fontWeight: 900, letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+                    OMNI
+                  </div>
+                  <div style={{ fontSize: '6.5px', color: '#7f1d1d', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                    Sourcing List
+                  </div>
+                </div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#111827', margin: 0 }}>
-                  {listName}
+
+              {/* Center: Official Logo (replacing Brand Name text) + List Name + Date */}
+              <div style={{ flex: 1, textAlign: 'center', padding: '0 8px' }}>
+                <img
+                  src={OMNI_LOGO_BASE64}
+                  alt="OMNI Logo"
+                  style={{
+                    maxHeight: '44px',
+                    maxWidth: '175px',
+                    objectFit: 'contain',
+                    margin: '0 auto 3px auto',
+                    display: 'block'
+                  }}
+                />
+                <h2 style={{ fontSize: '13.5px', fontWeight: 800, color: '#dc2626', margin: '0 0 2px 0', letterSpacing: '-0.2px', textTransform: 'uppercase' }}>
+                  {listName.trim() || 'Sourcing Product List'}
                 </h2>
-                <p style={{ fontSize: '11px', color: '#4b5563', margin: '2px 0 0 0' }}>
+                <p style={{ fontSize: '9.5px', color: '#64748b', margin: 0, fontWeight: 600 }}>
                   Date: <strong>{listDate}</strong>
                 </p>
+                {listNotes && (
+                  <div style={{ marginTop: '4px', display: 'inline-block', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '2px 10px', fontSize: '8.5px', color: '#334155' }}>
+                    <strong>Notes:</strong> {listNotes}
+                  </div>
+                )}
               </div>
+
+              {/* Right: QR Code with "Facebook Page" underneath */}
+              <div style={{ width: '110px', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', textAlign: 'center' }}>
+                <div style={{ padding: '2px', backgroundColor: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}>
+                  <img
+                    src={OMNI_QR_BASE64}
+                    alt="Facebook Page"
+                    style={{
+                      width: '52px',
+                      height: '52px',
+                      objectFit: 'contain',
+                      display: 'block'
+                    }}
+                  />
+                </div>
+                <span style={{ fontSize: '8px', color: '#1877f2', marginTop: '2.5px', fontWeight: 800, letterSpacing: '0.2px', textAlign: 'center', width: '60px', textTransform: 'uppercase' }}>
+                  Facebook Page
+                </span>
+              </div>
+
             </div>
+
+            {/* Simple & Clean Sourcing Table (Sized for single-page fit or multi-page flow) */}
+            {(() => {
+              const count = items.length;
+              const isSinglePage = pdfExportMode === 'single_page';
+              const singleImgPx = isSinglePage ? (count <= 3 ? 76 : (count <= 6 ? 64 : 52)) : 76;
+              const multiImgPx = isSinglePage ? (count <= 3 ? 56 : (count <= 6 ? 46 : 38)) : 56;
+              const cellPadding = isSinglePage ? (count <= 3 ? '6px 6px' : (count <= 6 ? '4px 6px' : '2.5px 5px')) : '6px 6px';
+              const fontSize = isSinglePage ? (count <= 4 ? '9px' : (count <= 7 ? '8.5px' : '8px')) : '9.5px';
+
+              return (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fontSize, marginBottom: '8px' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#0f172a', color: '#ffffff', textAlign: 'left' }}>
+                      <th style={{ padding: '6px 5px', width: '20px', textAlign: 'center' }}>#</th>
+                      <th style={{ padding: '6px 8px' }}>Product Details & Images</th>
+                      <th style={{ padding: '6px 6px', width: '68px', textAlign: 'center' }}>Source Link</th>
+                      <th style={{ padding: '6px 6px', textAlign: 'right', width: '80px' }}>Product Price (Tk)</th>
+                      <th style={{ padding: '6px 6px', textAlign: 'right', width: '78px' }}>Weight (Tk)</th>
+                      <th style={{ padding: '6px 6px', textAlign: 'right', width: '85px' }}>Total Amount (Tk)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, idx) => {
+                      const productLine = getItemProductLineTotal(item);
+                      const lineWeightPrice = getItemLineWeightPrice(item);
+                      const combinedLineTotal = getItemCombinedLineTotal(item);
+                      const itemTotalWeight = (item.weight_kg || 0) * (item.quantity || 1);
+                      const itemImages = (item.images && item.images.length > 0)
+                        ? item.images
+                        : (item.image_url ? [item.image_url] : []);
+
+                      return (
+                        <tr
+                          key={item.id}
+                          style={{
+                            borderBottom: '1px solid #e2e8f0',
+                            backgroundColor: idx % 2 === 0 ? '#ffffff' : '#f8fafc',
+                            pageBreakInside: 'avoid',
+                            breakInside: 'avoid'
+                          }}
+                        >
+                          {/* # */}
+                          <td style={{ padding: cellPadding, textAlign: 'center', fontWeight: 'bold', color: '#64748b', verticalAlign: 'top' }}>
+                            {idx + 1}
+                          </td>
+
+                          {/* Product Details & Bigger Images */}
+                          <td style={{ padding: cellPadding, verticalAlign: 'top' }}>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                              {/* Enlarged Images Container */}
+                              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', maxWidth: '170px', flexShrink: 0 }}>
+                                {itemImages.length > 0 ? (
+                                  itemImages.map((img, imgIdx) => (
+                                    <img
+                                      key={imgIdx}
+                                      src={img}
+                                      alt=""
+                                      crossOrigin="anonymous"
+                                      style={{
+                                        width: itemImages.length === 1 ? `${singleImgPx}px` : `${multiImgPx}px`,
+                                        height: itemImages.length === 1 ? `${singleImgPx}px` : `${multiImgPx}px`,
+                                        objectFit: 'cover',
+                                        borderRadius: '6px',
+                                        border: '1.5px solid #cbd5e1'
+                                      }}
+                                      onError={(e) => {
+                                        (e.currentTarget as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60"%3E%3Crect width="60" height="60" fill="%23f1f5f9"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" fill="%2394a3b8" font-size="8" font-family="sans-serif"%3ENo Photo%3C/text%3E%3C/svg%3E';
+                                      }}
+                                    />
+                                  ))
+                                ) : (
+                                  <div style={{ width: `${singleImgPx}px`, height: `${singleImgPx}px`, backgroundColor: '#f1f5f9', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '9px', border: '1px dashed #cbd5e1' }}>
+                                    No Image
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Title & Details */}
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 700, color: '#0f172a', fontSize: count <= 4 ? '10px' : '9px', lineHeight: 1.3 }}>
+                                  {item.title}
+                                </div>
+                                {item.details && (
+                                  <div style={{ color: '#475569', fontSize: count <= 4 ? '8.5px' : '8px', marginTop: '2px', lineHeight: 1.25 }}>
+                                    {item.details}
+                                  </div>
+                                )}
+                                {item.quantity > 1 && (
+                                  <div style={{ display: 'inline-block', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '1px 5px', fontSize: '8px', color: '#334155', fontWeight: 600, marginTop: '3px' }}>
+                                    Qty: {item.quantity} pcs
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Source Link */}
+                          <td style={{ padding: cellPadding, textAlign: 'center', verticalAlign: 'top' }}>
+                            {item.product_url ? (
+                              <a
+                                href={formatExternalUrl(item.product_url)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  color: '#2563eb',
+                                  textDecoration: 'underline',
+                                  fontWeight: 600,
+                                  fontSize: '9px',
+                                  display: 'inline-block'
+                                }}
+                              >
+                                Source Link ↗
+                              </a>
+                            ) : (
+                              <span style={{ color: '#94a3b8', fontSize: '8.5px' }}>—</span>
+                            )}
+                          </td>
+
+                          {/* Product Price in Tk */}
+                          <td style={{ padding: cellPadding, textAlign: 'right', verticalAlign: 'top' }}>
+                            <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '10.5px' }}>
+                              ৳{productLine.toLocaleString()}
+                            </div>
+                            {item.quantity > 1 && (
+                              <div style={{ fontSize: '7.5px', color: '#64748b', marginTop: '1px' }}>
+                                (৳{item.price_bdt.toLocaleString()} × {item.quantity})
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Weight in Tk */}
+                          <td style={{ padding: cellPadding, textAlign: 'right', verticalAlign: 'top' }}>
+                            <div style={{ fontWeight: 700, color: '#0284c7', fontSize: '10.5px' }}>
+                              ৳{lineWeightPrice.toFixed(0)}
+                            </div>
+                            <div style={{ fontSize: '7.5px', color: '#64748b', marginTop: '1px' }}>
+                              {itemTotalWeight.toFixed(3)} kg
+                            </div>
+                          </td>
+
+                          {/* Total Amount */}
+                          <td style={{ padding: cellPadding, textAlign: 'right', verticalAlign: 'top' }}>
+                            <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '11px' }}>
+                              ৳{combinedLineTotal.toLocaleString()}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+
+                  {/* Table Summary Footer */}
+                  <tfoot style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+                    <tr style={{ backgroundColor: '#f1f5f9', fontWeight: 700, borderTop: '2px solid #94a3b8', borderBottom: '2px solid #94a3b8', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+                      <td colSpan={3} style={{ padding: '6px 8px', textAlign: 'left', fontSize: '9.5px', color: '#0f172a' }}>
+                        <strong>TOTALS</strong> ({totalItemsCount} Products • {totalQuantity} pcs)
+                      </td>
+                      <td style={{ padding: '6px 6px', textAlign: 'right', fontSize: '10.5px', color: '#0f172a' }}>
+                        ৳{totalProductPriceBdt.toLocaleString()}
+                      </td>
+                      <td style={{ padding: '6px 6px', textAlign: 'right', fontSize: '10.5px', color: '#0284c7' }}>
+                        ৳{totalWeightPriceBdt.toLocaleString()}
+                        <div style={{ fontSize: '7.5px', color: '#64748b', fontWeight: 'normal' }}>
+                          {totalWeightKg.toFixed(3)} kg
+                        </div>
+                      </td>
+                      <td style={{ padding: '6px 6px', textAlign: 'right', fontSize: '11.5px', color: '#dc2626', fontWeight: 800 }}>
+                        ৳{grandTotalBdt.toLocaleString()}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              );
+            })()}
+
           </div>
 
-          {/* Notes */}
-          {listNotes && (
-            <div style={{ backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '8px 12px', marginBottom: '16px', fontSize: '11px', color: '#374151' }}>
-              <strong>Notes:</strong> {listNotes}
-            </div>
-          )}
-
-          {/* Summary Box Header (Logistics & Financials) */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '8px' }}>
-            <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
-              <div style={{ fontSize: '9px', color: '#1e40af', textTransform: 'uppercase', fontWeight: 'bold' }}>Products</div>
-              <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#1d4ed8', marginTop: '2px' }}>
-                {totalItemsCount} <span style={{ fontSize: '9.5px', fontWeight: 'normal' }}>({totalQuantity} pcs)</span>
-              </div>
-            </div>
-
-            <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
-              <div style={{ fontSize: '9px', color: '#92400e', textTransform: 'uppercase', fontWeight: 'bold' }}>Total Weight</div>
-              <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#b45309', marginTop: '2px' }}>
-                {totalWeightKg.toFixed(3)} kg
-              </div>
-            </div>
-
-            <div style={{ backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
-              <div style={{ fontSize: '9px', color: '#334155', textTransform: 'uppercase', fontWeight: 'bold' }}>Product Price</div>
-              <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#0f172a', marginTop: '2px' }}>
-                ৳{totalProductPriceBdt.toLocaleString()}
-              </div>
-            </div>
-
-            <div style={{ backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
-              <div style={{ fontSize: '9px', color: '#0369a1', textTransform: 'uppercase', fontWeight: 'bold' }}>Weight Freight Price</div>
-              <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#0284c7', marginTop: '2px' }}>
-                ৳{totalWeightPriceBdt.toLocaleString()}
-              </div>
-            </div>
-          </div>
-
-          {/* Payment & Balance Row */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '16px' }}>
-            <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '6px', padding: '8px 12px', textAlign: 'center', color: '#ffffff' }}>
-              <div style={{ fontSize: '9px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 'bold' }}>Grand Total (Product + Weight)</div>
-              <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#38bdf8', marginTop: '2px' }}>
-                ৳{grandTotalBdt.toLocaleString()}
-              </div>
-            </div>
-
-            <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '6px', padding: '8px 12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '9px', color: '#065f46', textTransform: 'uppercase', fontWeight: 'bold' }}>Customer Paid</div>
-              <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#047857', marginTop: '2px' }}>
-                ৳{totalPaidBdt.toLocaleString()}
-              </div>
-            </div>
-
-            <div style={{ backgroundColor: totalDueBdt > 0 ? '#fef2f2' : '#ecfdf5', border: `1px solid ${totalDueBdt > 0 ? '#fecaca' : '#a7f3d0'}`, borderRadius: '6px', padding: '8px 12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '9px', color: totalDueBdt > 0 ? '#991b1b' : '#065f46', textTransform: 'uppercase', fontWeight: 'bold' }}>Customer Outstanding Due</div>
-              <div style={{ fontSize: '15px', fontWeight: 'bold', color: totalDueBdt > 0 ? '#b91c1c' : '#047857', marginTop: '2px' }}>
-                ৳{totalDueBdt.toLocaleString()}
-              </div>
-            </div>
-          </div>
-
-          {/* Products Table with Weight Freight, Paid & Due */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '8.5px', marginBottom: '16px' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#1f2937', color: '#ffffff', textAlign: 'left' }}>
-                <th style={{ padding: '6px 4px', width: '18px' }}>#</th>
-                <th style={{ padding: '6px 4px', width: '34px' }}>Image</th>
-                <th style={{ padding: '6px 4px' }}>Product Details</th>
-                <th style={{ padding: '6px 4px', width: '45px' }}>Source Link</th>
-                <th style={{ padding: '6px 4px', textAlign: 'right', width: '52px' }}>Unit Price</th>
-                <th style={{ padding: '6px 4px', textAlign: 'center', width: '22px' }}>Qty</th>
-                <th style={{ padding: '6px 4px', textAlign: 'right', width: '60px' }}>Weight & Freight</th>
-                <th style={{ padding: '6px 4px', textAlign: 'right', width: '52px' }}>Product Line</th>
-                <th style={{ padding: '6px 4px', textAlign: 'right', width: '55px' }}>Combined Total</th>
-                <th style={{ padding: '6px 4px', textAlign: 'right', width: '45px' }}>Paid</th>
-                <th style={{ padding: '6px 4px', textAlign: 'right', width: '45px' }}>Due</th>
-                <th style={{ padding: '6px 4px', textAlign: 'center', width: '38px' }}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, idx) => {
-                const productLine = getItemProductLineTotal(item);
-                const unitWeightPrice = getItemUnitWeightPrice(item);
-                const lineWeightPrice = getItemLineWeightPrice(item);
-                const combinedLineTotal = getItemCombinedLineTotal(item);
-                const itemTotalWeight = (item.weight_kg || 0) * (item.quantity || 1);
-                const paid = getItemPaid(item);
-                const due = getItemDue(item);
-                const status = getItemStatus(item);
-
-                return (
-                  <tr key={item.id} style={{ borderBottom: '1px solid #e5e7eb', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#f9fafb' }}>
-                    <td style={{ padding: '5px 4px', fontWeight: 'bold', textAlign: 'center' }}>{idx + 1}</td>
-                    <td style={{ padding: '5px 4px' }}>
-                      {item.image_url ? (
-                        <img src={item.image_url} alt="" style={{ width: '30px', height: '30px', objectFit: 'cover', borderRadius: '4px' }} />
-                      ) : (
-                        <div style={{ width: '30px', height: '30px', backgroundColor: '#e5e7eb', borderRadius: '4px' }} />
-                      )}
-                    </td>
-                    <td style={{ padding: '5px 4px' }}>
-                      <div style={{ fontWeight: 'bold', color: '#111827', fontSize: '9.5px' }}>{item.title}</div>
-                      {item.details && <div style={{ color: '#4b5563', fontSize: '8px', marginTop: '1px' }}>{item.details}</div>}
-                      {item.platform && <div style={{ color: '#dc2626', fontSize: '7.5px', textTransform: 'uppercase', fontWeight: 'bold', marginTop: '1px' }}>Platform: {item.platform}</div>}
-                    </td>
-                    <td style={{ padding: '5px 4px', wordBreak: 'break-all' }}>
-                      {item.product_url ? (
-                        <a href={item.product_url} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', textDecoration: 'underline' }}>
-                          View Link
-                        </a>
-                      ) : (
-                        <span style={{ color: '#9ca3af' }}>N/A</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '5px 4px', textAlign: 'right', fontWeight: '500' }}>
-                      <div>৳{item.price_bdt.toLocaleString()}</div>
-                      <div style={{ fontSize: '7.5px', color: '#0284c7' }}>+৳{unitWeightPrice.toFixed(0)} wt</div>
-                    </td>
-                    <td style={{ padding: '5px 4px', textAlign: 'center', fontWeight: 'bold' }}>{item.quantity}</td>
-                    <td style={{ padding: '5px 4px', textAlign: 'right' }}>
-                      <div style={{ color: '#b45309', fontWeight: 'bold' }}>{itemTotalWeight.toFixed(3)} kg</div>
-                      <div style={{ color: '#0284c7', fontSize: '8px', fontWeight: '600' }}>৳{lineWeightPrice.toFixed(0)} freight</div>
-                    </td>
-                    <td style={{ padding: '5px 4px', textAlign: 'right', fontWeight: '600', color: '#374151' }}>
-                      ৳{productLine.toLocaleString()}
-                    </td>
-                    <td style={{ padding: '5px 4px', textAlign: 'right', fontWeight: 'bold', color: '#111827' }}>
-                      ৳{combinedLineTotal.toLocaleString()}
-                    </td>
-                    <td style={{ padding: '5px 4px', textAlign: 'right', fontWeight: 'bold', color: '#047857' }}>
-                      ৳{paid.toLocaleString()}
-                    </td>
-                    <td style={{ padding: '5px 4px', textAlign: 'right', fontWeight: 'bold', color: due > 0 ? '#b91c1c' : '#047857' }}>
-                      ৳{due.toLocaleString()}
-                    </td>
-                    <td style={{ padding: '5px 4px', textAlign: 'center' }}>
-                      <span
-                        style={{
-                          fontSize: '7px',
-                          padding: '2px 3px',
-                          borderRadius: '3px',
-                          fontWeight: 'bold',
-                          textTransform: 'uppercase',
-                          backgroundColor: status === 'paid' ? '#dcfce7' : status === 'partial' ? '#fef3c7' : '#fee2e2',
-                          color: status === 'paid' ? '#166534' : status === 'partial' ? '#92400e' : '#991b1b'
-                        }}
-                      >
-                        {status}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          {/* Grand Totals Footer with Weight Freight, Paid & Due */}
-          <div style={{ backgroundColor: '#111827', color: '#ffffff', borderRadius: '8px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontSize: '11px', fontWeight: 'bold' }}>GRAND TOTAL STATEMENT</div>
-              <div style={{ fontSize: '8.5px', color: '#9ca3af', marginTop: '2px' }}>
-                Cargo Freight Rate: {freightRate} Tk/{freightUnit === 'per_gm' ? 'gm' : 'kg'} (1,200 Tk/kg) • Formatted for A4 Standard Paper
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '12px', textAlign: 'right', flexWrap: 'wrap' }}>
+          {/* BOTTOM SECTION: Statement Card + Footer Note */}
+          <div style={{ flexShrink: 0, marginTop: '8px', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+            {/* Grand Total Statement Card */}
+            <div style={{ backgroundColor: '#0f172a', color: '#ffffff', borderRadius: '7px', padding: '9px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ fontSize: '8.5px', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 'bold' }}>TOTAL WEIGHT</div>
-                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#fbbf24' }}>{totalWeightKg.toFixed(3)} kg</div>
+                <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                  Grand Total Statement
+                </div>
+                <div style={{ fontSize: '8.5px', color: '#94a3b8', marginTop: '1px' }}>
+                  Cargo Freight Rate: {freightRate} Tk/{freightUnit === 'per_gm' ? 'gm' : 'kg'} (1,200 Tk/kg)
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '8px', color: '#fbbf24', textTransform: 'uppercase', fontWeight: 700 }}>Total Weight</div>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#fbbf24' }}>{totalWeightKg.toFixed(3)} kg</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '8px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Product Price</div>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#ffffff' }}>৳{totalProductPriceBdt.toLocaleString()}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '8px', color: '#38bdf8', textTransform: 'uppercase', fontWeight: 700 }}>Weight (Tk)</div>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#38bdf8' }}>৳{totalWeightPriceBdt.toLocaleString()}</div>
+                </div>
+                <div style={{ textAlign: 'right', paddingLeft: '12px', borderLeft: '1px solid #334155' }}>
+                  <div style={{ fontSize: '8px', color: '#f87171', textTransform: 'uppercase', fontWeight: 800 }}>Grand Total</div>
+                  <div style={{ fontSize: '14px', fontWeight: 900, color: '#ffffff' }}>৳{grandTotalBdt.toLocaleString()} Tk</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer note with logo and QR verification */}
+            <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '8px', color: '#94a3b8', borderTop: '1px solid #e2e8f0', paddingTop: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <img src={OMNI_LOGO_BASE64} alt="" style={{ height: '13px', objectFit: 'contain' }} />
+                <span>Official Sourcing & Cost Quotation</span>
               </div>
               <div>
-                <div style={{ fontSize: '8.5px', color: '#cbd5e1', textTransform: 'uppercase', fontWeight: 'bold' }}>PRODUCT VALUE</div>
-                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#ffffff' }}>৳{totalProductPriceBdt.toLocaleString()} BDT</div>
-              </div>
-              <div>
-                <div style={{ fontSize: '8.5px', color: '#38bdf8', textTransform: 'uppercase', fontWeight: 'bold' }}>WEIGHT FREIGHT</div>
-                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#38bdf8' }}>৳{totalWeightPriceBdt.toLocaleString()} BDT</div>
-              </div>
-              <div>
-                <div style={{ fontSize: '8.5px', color: '#60a5fa', textTransform: 'uppercase', fontWeight: 'bold' }}>GRAND TOTAL</div>
-                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#93c5fd' }}>৳{grandTotalBdt.toLocaleString()} BDT</div>
-              </div>
-              <div>
-                <div style={{ fontSize: '8.5px', color: '#34d399', textTransform: 'uppercase', fontWeight: 'bold' }}>TOTAL PAID</div>
-                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#34d399' }}>৳{totalPaidBdt.toLocaleString()} BDT</div>
-              </div>
-              <div>
-                <div style={{ fontSize: '8.5px', color: totalDueBdt > 0 ? '#f87171' : '#34d399', textTransform: 'uppercase', fontWeight: 'bold' }}>OUTSTANDING DUE</div>
-                <div style={{ fontSize: '14px', fontWeight: 'bold', color: totalDueBdt > 0 ? '#f87171' : '#34d399' }}>৳{totalDueBdt.toLocaleString()} BDT</div>
+                Generated on {listDate} • Scan QR for Facebook Page
               </div>
             </div>
-          </div>
-
-          <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '8.5px', color: '#6b7280', borderTop: '1px solid #e5e7eb', paddingTop: '6px' }}>
-            Generated by OMNI Sourcing & Costing Engine • Customer Payment & Balance Statement
           </div>
         </div>
       </div>
-
     </div>
   );
 }

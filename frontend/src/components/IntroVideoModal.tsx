@@ -402,7 +402,8 @@ export default function IntroVideoModal({
                 height: '75px',
                 maxWidth: '380px',
                 objectFit: 'contain',
-                display: 'block'
+                display: 'block',
+                imageRendering: '-webkit-optimize-contrast',
               }}
             />
           </div>

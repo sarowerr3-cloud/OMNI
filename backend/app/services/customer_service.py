@@ -165,6 +165,8 @@ class CustomerService:
                         self._customers[c_raw["id"]] = CustomerResponse(**c_raw)
                     for g_raw in data.get("groups", []):
                         self._groups[g_raw["id"]] = CustomerGroup(**g_raw)
+                if not self._customers:
+                    self._seed_defaults()
             except Exception as e:
                 print(f"Error loading customers from {self.storage_file}: {e}")
                 self._seed_defaults()

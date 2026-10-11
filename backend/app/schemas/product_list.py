@@ -15,6 +15,7 @@ class ProductListItem(BaseModel):
     weight_kg: Decimal
     quantity: int = 1
     image_url: Optional[str] = None
+    images: Optional[List[str]] = Field(default_factory=list)
     product_url: Optional[str] = None
     platform: Optional[str] = "Manual"
     notes: Optional[str] = None
@@ -29,6 +30,7 @@ class ProductListItem(BaseModel):
 
 class ProductListCreate(BaseModel):
     name: str = Field(..., description="Name of the product list")
+    brand_name: Optional[str] = Field("OMNI SOURCING", description="Brand name for quotation / PDF")
     date: str = Field(..., description="Date of the product list (YYYY-MM-DD)")
     items: List[ProductListItem] = []
     notes: Optional[str] = None
@@ -44,6 +46,7 @@ class ProductListCreate(BaseModel):
 class ProductListResponse(BaseModel):
     id: str
     name: str
+    brand_name: Optional[str] = "OMNI SOURCING"
     date: str
     items: List[ProductListItem] = []
     total_price_bdt: Decimal

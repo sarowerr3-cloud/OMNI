@@ -28,7 +28,8 @@ class CostEngine:
         quantity: int = 10,
         shipping_method: str = "air",
         user_weight_kg: Optional[float] = None,
-        custom_rate_rmb_bdt: Optional[Decimal] = None
+        custom_rate_rmb_bdt: Optional[Decimal] = None,
+        custom_freight_rate_per_kg: Optional[Decimal] = None
     ) -> CostBreakdown:
         # Use user-defined RMB exchange rate if provided, otherwise default rate
         effective_rmb_rate = custom_rate_rmb_bdt if custom_rate_rmb_bdt is not None else self.default_rate_rmb_bdt
@@ -53,8 +54,11 @@ class CostEngine:
         weight_kg = Decimal(str(user_weight_kg)) if user_weight_kg is not None else (product.weight_kg or Decimal("0.30"))
         total_weight_kg = weight_kg * Decimal(quantity)
 
-        # Shipping rate
-        rate_per_kg = self.air_rate_per_kg if shipping_method == "air" else self.sea_rate_per_kg
+        # Shipping rate: use user-defined freight rate if provided, else defaults
+        if custom_freight_rate_per_kg is not None and custom_freight_rate_per_kg > 0:
+            rate_per_kg = custom_freight_rate_per_kg
+        else:
+            rate_per_kg = self.air_rate_per_kg if shipping_method == "air" else self.sea_rate_per_kg
         international_freight_bdt = (total_weight_kg * rate_per_kg).quantize(Decimal("0.01"))
 
         # Duty & VAT

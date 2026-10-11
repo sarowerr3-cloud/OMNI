@@ -1,4 +1,5 @@
 import { Customer } from '@/components/CustomerManager';
+import { WHATSAPP_GROUP_URL } from '@/config/whatsapp';
 
 export type MessageTemplateType = 'new_arrival' | 'discount_offer' | 'restock_preorder' | 'custom';
 
@@ -18,13 +19,15 @@ export function generateMessageText(
   productPriceBdt: string,
   productUrl: string,
   templateType: MessageTemplateType,
-  customMsgBody?: string
+  customMsgBody?: string,
+  includeGroup: boolean = true
 ): string {
   const pTitle = productTitle.trim() || 'Exclusive China Factory Product';
   const pPrice = productPriceBdt.trim()
     ? `৳${Number(productPriceBdt).toLocaleString()} BDT`
     : 'Factory Wholesale Rate';
-  const pUrl = productUrl.trim() || 'https://omni-sourcing.bd';
+  const pUrl = productUrl.trim() || '';
+  const groupFooter = includeGroup ? `\n\n💬 *Join our VIP WhatsApp Sourcing Group:*\n${WHATSAPP_GROUP_URL}` : '';
 
   if (templateType === 'new_arrival') {
     return (
@@ -32,9 +35,10 @@ export function generateMessageText(
       `We just sourced an exciting new product directly from China factories:\n` +
       `📦 *${pTitle}*\n` +
       `💰 Special Client Price: *${pPrice}*\n` +
-      (pUrl ? `🔗 Product Details: ${pUrl}\n\n` : '\n') +
+      (pUrl ? `🔗 Product Details: ${pUrl}\n` : '') +
       `Pre-orders and direct air shipment slots are open now for ${customer.city || 'Dhaka'} delivery.\n` +
-      `Please reply to this message to reserve your batch units! ✨`
+      `Please reply to this message to reserve your batch units! ✨` +
+      groupFooter
     );
   } else if (templateType === 'discount_offer') {
     return (
@@ -42,8 +46,9 @@ export function generateMessageText(
       `Exclusive Flash Offer for our *${customer.group}* partners:\n` +
       `🏷️ Product: *${pTitle}*\n` +
       `💵 Offer Price: *${pPrice}* (Limited Batch)\n` +
-      (pUrl ? `🔗 Check Details: ${pUrl}\n\n` : '\n') +
-      `First come, first served. Let us know how many units you want to lock in today!`
+      (pUrl ? `🔗 Check Details: ${pUrl}\n` : '') +
+      `First come, first served. Let us know how many units you want to lock in today!` +
+      groupFooter
     );
   } else if (templateType === 'restock_preorder') {
     return (
@@ -51,8 +56,9 @@ export function generateMessageText(
       `Our next scheduled China cargo shipment is finalizing this week.\n` +
       `Are you restocking *${pTitle}* for your ${customer.category} inventory?\n` +
       `Factory Landed Rate: ${pPrice}\n` +
-      (pUrl ? `Specs Link: ${pUrl}\n\n` : '\n') +
-      `Drop us a message if you want to include your volume in this batch.`
+      (pUrl ? `Specs Link: ${pUrl}\n` : '') +
+      `Drop us a message if you want to include your volume in this batch.` +
+      groupFooter
     );
   } else if (templateType === 'custom') {
     if (customMsgBody && customMsgBody.trim()) {
@@ -63,16 +69,19 @@ export function generateMessageText(
         .replace(/\{city\}/g, customer.city || 'Dhaka')
         .replace(/\{product\}/g, pTitle)
         .replace(/\{price\}/g, pPrice)
-        .replace(/\{url\}/g, pUrl);
+        .replace(/\{url\}/g, pUrl || WHATSAPP_GROUP_URL);
     }
-    return `Assalamu Alaikum ${customer.name}! Update regarding ${pTitle}: ${pPrice}.`;
+    return `Assalamu Alaikum ${customer.name}! Update regarding ${pTitle}: ${pPrice}.${groupFooter}`;
   }
 
-  return `Assalamu Alaikum ${customer.name}! New update for ${pTitle}: ${pPrice}.`;
+  return `Assalamu Alaikum ${customer.name}! New update for ${pTitle}: ${pPrice}.${groupFooter}`;
 }
 
 export function getWhatsappShareUrl(phone: string, text: string): string {
   const cleanPhone = formatWhatsappPhone(phone);
+  if (!cleanPhone) {
+    return `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+  }
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
 }
 
