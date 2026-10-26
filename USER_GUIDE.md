@@ -95,9 +95,46 @@ SourceIQ includes a smart, interactive **Product List Builder** designed for imp
 
 ---
 
-## 🛠️ Step 6: System Architecture & Build Guide
+## 👤 Step 6: Customer Profiles & Universal Order Entry System
+
+SourceIQ now features a customer profile and order storage system:
+
+### 1. Universal Search (Home Page Hero Bar)
+- Located prominently on the home page.
+- Locate any customer instantly by typing their **Phone Number**, **Full Name**, or **Delivery Address**.
+- Matching customer profiles display with order statistics (total orders, delivered count, balance due).
+- **1-Click Actions**:
+  - `👤 Profile`: Opens full customer profile and order history.
+  - `➕ Input Order`: Directly opens order entry modal for that customer.
+  - If a customer is not found, click **`+ Create New Profile`** with the entered phone or name pre-filled!
+
+### 2. Customer Profiles
+- Every customer profile holds their **Name**, **Phone Number**, **Delivery Address**, and **Brief Notes** (special customer requirements or reminders).
+- **Embedded Order Collection**: All orders placed by the customer are stored directly within their profile.
+- Real-time aggregate statistics: Total Orders, Active In-Flight Orders, Delivered Orders, Cancelled Orders, Total Amount, Advance Paid, and Remaining Balance Due.
+
+### 3. Order Details Entry & Tracking
+When a customer places an order:
+1. Search for them via phone number or name in the Universal Search bar.
+2. Click **`➕ Input Order`** or open their profile and click **`➕ Add New Order`**.
+3. Input the order details:
+   - **Product Information**: Product Name, Product Image (with live thumbnail preview), Source Link (1688 / factory / store), and Weight (kg or gm).
+   - **Pricing & Payment Status**: Unit Price, Quantity, Total Amount, and Advance Payment Made.
+   - **Automatic Remaining Balance**: Real-time calculation of remaining due balance (`Total Amount - Advance Payment`).
+   - **Payment Status Badge**: Automatically categorizes as `Paid`, `Partial`, or `Unpaid`.
+   - **Order Date & Time**: Automatically captured with timestamp, editable for past orders.
+   - **Delivery & Cancellation Status Checkboxes**:
+     - `[x] Order Delivered`
+     - `[x] Order Cancelled`
+     - Status checkboxes can also be toggled directly from the customer's order list in their profile!
+   - **Brief Notes**: Special customer requirements or reminders (e.g. shipping preferences, special strap color, urgent deadline).
+
+---
+
+## 🛠️ Step 7: System Architecture & Build Guide
 
 For complete technical documentation, database schemas, and phase progression, refer to:
 - 📖 [BUILD_GUIDE.md](file:///f:/OMNI/BUILD_GUIDE.md) — Technical specification & architecture rules
 - 📜 [.agents/rules/project_rules.md](file:///f:/OMNI/.agents/rules/project_rules.md) — Importer business logic constraints
+
 

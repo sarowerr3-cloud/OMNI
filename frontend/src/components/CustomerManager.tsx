@@ -20,9 +20,21 @@ import {
   ShoppingBag,
   CheckCircle2,
   RefreshCw,
+  Plus,
+  Phone,
+  Coins,
+  Package,
+  Calendar,
+  Clock,
+  ExternalLink,
+  Filter,
+  Layers,
+  FileText,
+  FileSpreadsheet
 } from 'lucide-react';
 import { ProductItem } from '@/components/ProductListBuilder';
-import { customerApi, CustomerPayload, GroupPayload } from '@/services/customerApi';
+import { Customer, CustomerGroup, CustomerOrder, CustomerOrderPayload, CustomerPayload, GroupPayload } from '@/types/customer';
+import { customerApi, normalizePhoneNumber } from '@/services/customerApi';
 import {
   formatWhatsappPhone,
   getWhatsappShareUrl,
@@ -34,44 +46,29 @@ import CustomerFormModal from './customers/CustomerFormModal';
 import GroupFormModal from './customers/GroupFormModal';
 import PersonalMessageModal from './customers/PersonalMessageModal';
 import BroadcastModal from './customers/BroadcastModal';
+import CustomerProfileModal from './customers/CustomerProfileModal';
+import CustomerOrderModal from './customers/CustomerOrderModal';
+import UniversalCustomerSearch from './customers/UniversalCustomerSearch';
+import MonthlyExcelModal from './customers/MonthlyExcelModal';
 
-export interface Customer {
-  id: string;
-  name: string;
-  phone: string;
-  email?: string;
-  group: string;
-  category: string;
-  city?: string;
-  address?: string;
-  notes?: string;
-  preferred_contact: string;
-  total_orders: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CustomerGroup {
-  id: string;
-  name: string;
-  category: string;
-  description?: string;
-  color: string;
-  member_count: number;
-}
+export type { Customer, CustomerGroup };
 
 interface CustomerManagerProps {
   apiUrl: string;
   productListItems?: ProductItem[];
   showToast: (msg: string) => void;
   initialSelectedProduct?: ProductItem | null;
+  selectedCustomerId?: string | null;
+  onClearSelectedCustomer?: () => void;
 }
 
 export default function CustomerManager({
   apiUrl,
   productListItems = [],
   showToast,
-  initialSelectedProduct = null
+  initialSelectedProduct = null,
+  selectedCustomerId = null,
+  onClearSelectedCustomer
 }: CustomerManagerProps) {
   // Customers & Groups State
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -81,23 +78,27 @@ export default function CustomerManager({
   // Filters & Search
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('All');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('All');
-  const [selectedCityFilter, setSelectedCityFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Modals
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [prefillQuery, setPrefillQuery] = useState<string>('');
   const [showGroupModal, setShowGroupModal] = useState<boolean>(false);
   const [showPersonalMsgModal, setShowPersonalMsgModal] = useState<boolean>(false);
   const [targetCustomerForMsg, setTargetCustomerForMsg] = useState<Customer | null>(null);
   const [showBroadcastModal, setShowBroadcastModal] = useState<boolean>(false);
+  const [showMonthlyExcelModal, setShowMonthlyExcelModal] = useState<boolean>(false);
+
+  // Profile & Order Modals
+  const [selectedProfileCustomer, setSelectedProfileCustomer] = useState<Customer | null>(null);
+  const [showOrderModal, setShowOrderModal] = useState<boolean>(false);
+  const [targetCustomerForOrder, setTargetCustomerForOrder] = useState<Customer | null>(null);
+  const [orderToEdit, setOrderToEdit] = useState<CustomerOrder | null>(null);
 
   // Loading States for Operations
   const [savingCustomer, setSavingCustomer] = useState<boolean>(false);
   const [savingGroup, setSavingGroup] = useState<boolean>(false);
-
-  // Broadcast & outreach tracking
-  const [sentCustomerIds, setSentCustomerIds] = useState<Record<string, boolean>>({});
 
   // Fetch Customers & Groups from Backend API
   const fetchAllData = async () => {
@@ -109,6 +110,12 @@ export default function CustomerManager({
       ]);
       setCustomers(custData);
       setGroups(grpData);
+
+      // If a customer was opened by ID
+      if (selectedCustomerId) {
+        const found = custData.find((c) => c.id === selectedCustomerId);
+        if (found) setSelectedProfileCustomer(found);
+      }
     } catch (err) {
       console.error('Failed to load customers:', err);
       showToast('⚠️ Could not connect to customer server. Check backend.');
@@ -119,7 +126,15 @@ export default function CustomerManager({
 
   useEffect(() => {
     fetchAllData();
-  }, [apiUrl]);
+  }, [apiUrl, selectedCustomerId]);
+
+  // Sync selectedProfileCustomer with updated customer state
+  useEffect(() => {
+    if (selectedProfileCustomer) {
+      const current = customers.find((c) => c.id === selectedProfileCustomer.id);
+      if (current) setSelectedProfileCustomer(current);
+    }
+  }, [customers]);
 
   // Filtered Customers
   const filteredCustomers = useMemo(() => {
@@ -130,120 +145,138 @@ export default function CustomerManager({
       if (selectedCategoryFilter !== 'All' && c.category.toLowerCase() !== selectedCategoryFilter.toLowerCase()) {
         return false;
       }
-      if (selectedCityFilter !== 'All' && c.city?.toLowerCase() !== selectedCityFilter.toLowerCase()) {
-        return false;
-      }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
+        const qDigits = normalizePhoneNumber(q);
         const matchName = c.name.toLowerCase().includes(q);
-        const matchPhone = c.phone.toLowerCase().includes(q);
-        const matchNotes = c.notes?.toLowerCase().includes(q);
-        const matchCity = c.city?.toLowerCase().includes(q);
-        const matchAddr = c.address?.toLowerCase().includes(q);
-        if (!matchName && !matchPhone && !matchNotes && !matchCity && !matchAddr) {
+        const matchPhone = c.phone.toLowerCase().includes(q) || (!!qDigits && normalizePhoneNumber(c.phone).includes(qDigits));
+        const matchNotes = c.notes ? c.notes.toLowerCase().includes(q) : false;
+        const matchCity = c.city ? c.city.toLowerCase().includes(q) : false;
+        const matchAddr = c.address ? c.address.toLowerCase().includes(q) : false;
+        const matchOrder = (c.orders || []).some(
+          (o) => o.product_name.toLowerCase().includes(q) || (o.notes && o.notes.toLowerCase().includes(q))
+        );
+        if (!matchName && !matchPhone && !matchNotes && !matchCity && !matchAddr && !matchOrder) {
           return false;
         }
       }
       return true;
     });
-  }, [customers, selectedGroupFilter, selectedCategoryFilter, selectedCityFilter, searchQuery]);
+  }, [customers, selectedGroupFilter, selectedCategoryFilter, searchQuery]);
 
-  // Unique lists for filter dropdowns
-  const availableCategories = useMemo(() => {
-    const set = new Set<string>();
-    customers.forEach((c) => {
-      if (c.category) set.add(c.category);
-    });
-    return Array.from(set);
-  }, [customers]);
-
-  const availableCities = useMemo(() => {
-    const set = new Set<string>();
-    customers.forEach((c) => {
-      if (c.city) set.add(c.city);
-    });
-    return Array.from(set);
-  }, [customers]);
-
-  // Open 1-on-1 WhatsApp Chat
-  const handleSendWhatsapp = (customer: Customer, text: string) => {
-    const url = getWhatsappShareUrl(customer.phone, text);
-    window.open(url, '_blank', 'noopener,noreferrer');
-    showToast(`🟢 WhatsApp chat opened for ${customer.name}!`);
-    setSentCustomerIds((prev) => ({ ...prev, [customer.id]: true }));
+  // Modal Triggers
+  const handleOpenAdd = (prefill?: string) => {
+    setEditingCustomer(null);
+    setPrefillQuery(prefill || '');
+    setShowAddModal(true);
   };
 
-  // Open 1-on-1 SMS App
-  const handleSendSms = (customer: Customer, text: string) => {
-    const url = getSmsShareUrl(customer.phone, text);
-    window.location.href = url;
-    showToast(`💬 SMS app opened for ${customer.name}!`);
+  const handleOpenEdit = (customer: Customer) => {
+    setEditingCustomer(customer);
+    setPrefillQuery('');
+    setShowAddModal(true);
   };
 
-  // Copy Message Text
-  const handleCopyMessage = (customer: Customer, text: string) => {
-    navigator.clipboard.writeText(text);
-    showToast(`📋 Formatted message copied for ${customer.name}!`);
+  const handleOpenProfile = (customer: Customer) => {
+    setSelectedProfileCustomer(customer);
   };
 
-  // Copy All Phone Numbers for Selected Group
-  const handleCopyGroupPhones = (targetGroup: string) => {
-    const groupMembers = customers.filter(
-      (c) => targetGroup === 'All' || c.group.toLowerCase() === targetGroup.toLowerCase()
-    );
-    const phones = groupMembers.map((c) => formatWhatsappPhone(c.phone)).join(', ');
-    navigator.clipboard.writeText(phones);
-    showToast(`📋 Copied ${groupMembers.length} phone numbers for ${targetGroup}!`);
+  const handleOpenNewOrder = (customer: Customer) => {
+    setTargetCustomerForOrder(customer);
+    setOrderToEdit(null);
+    setShowOrderModal(true);
   };
 
-  // Add / Edit Customer Form Submit
+  const handleOpenEditOrder = (order: CustomerOrder) => {
+    if (selectedProfileCustomer) {
+      setTargetCustomerForOrder(selectedProfileCustomer);
+      setOrderToEdit(order);
+      setShowOrderModal(true);
+    }
+  };
+
+  // Customer Form Submit (Create or Update)
   const handleSaveCustomer = async (payload: CustomerPayload) => {
     setSavingCustomer(true);
     try {
       if (editingCustomer) {
         const updated = await customerApi.updateCustomer(apiUrl, editingCustomer.id, payload);
         setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-        showToast(`✏️ Updated "${updated.name}" successfully!`);
-        setShowAddModal(false);
-        setEditingCustomer(null);
+        if (selectedProfileCustomer && selectedProfileCustomer.id === updated.id) {
+          setSelectedProfileCustomer(updated);
+        }
+        showToast(`✅ Profile for "${updated.name}" updated!`);
       } else {
         const created = await customerApi.createCustomer(apiUrl, payload);
         setCustomers((prev) => [created, ...prev]);
-        showToast(`✅ Registered customer "${created.name}"!`);
-        setShowAddModal(false);
+        showToast(`🎉 Customer Profile created for "${created.name}"!`);
+        // Open their profile
+        setSelectedProfileCustomer(created);
       }
+      setShowAddModal(false);
     } catch (err) {
       console.error('Failed to save customer:', err);
-      showToast('❌ Error saving customer. Check API server.');
+      showToast('❌ Error saving customer profile.');
     } finally {
       setSavingCustomer(false);
     }
   };
 
-  // Open Edit Modal
-  const handleOpenEdit = (customer: Customer) => {
-    setEditingCustomer(customer);
-    setShowAddModal(true);
-  };
-
-  // Open Add Modal
-  const handleOpenAdd = () => {
-    setEditingCustomer(null);
-    setShowAddModal(true);
-  };
-
   // Delete Customer
   const handleDeleteCustomer = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to remove "${name}" from customer list?`)) {
+    if (!confirm(`Are you sure you want to delete profile for "${name}" and all associated orders?`)) {
       return;
     }
     try {
       await customerApi.deleteCustomer(apiUrl, id);
       setCustomers((prev) => prev.filter((c) => c.id !== id));
-      showToast(`🗑️ Removed customer "${name}"`);
+      if (selectedProfileCustomer?.id === id) {
+        setSelectedProfileCustomer(null);
+      }
+      showToast(`🗑️ Deleted profile for "${name}".`);
     } catch (err) {
-      console.error('Delete customer error:', err);
-      showToast('❌ Error deleting customer.');
+      console.error('Failed to delete customer:', err);
+      showToast('❌ Could not delete customer.');
+    }
+  };
+
+  // Order CRUD Handlers
+  const handleSaveOrder = async (orderPayload: CustomerOrderPayload, orderId?: string) => {
+    if (!targetCustomerForOrder) return;
+
+    if (orderId) {
+      const updatedOrder = await customerApi.updateCustomerOrder(apiUrl, targetCustomerForOrder.id, orderId, orderPayload);
+      await fetchAllData();
+      showToast('✅ Order updated successfully!');
+    } else {
+      const createdOrder = await customerApi.addCustomerOrder(apiUrl, targetCustomerForOrder.id, orderPayload);
+      await fetchAllData();
+      showToast('✅ Order saved to customer profile!');
+    }
+  };
+
+  const handleToggleOrderStatus = async (order: CustomerOrder, isDelivered: boolean, isCancelled: boolean) => {
+    if (!selectedProfileCustomer) return;
+    try {
+      await customerApi.updateCustomerOrder(apiUrl, selectedProfileCustomer.id, order.id, {
+        is_delivered: isDelivered,
+        is_cancelled: isCancelled
+      });
+      await fetchAllData();
+      showToast(isDelivered ? '📦 Order marked as Delivered!' : (isCancelled ? '❌ Order marked as Cancelled!' : '🔄 Order status updated.'));
+    } catch {
+      showToast('⚠️ Could not update order status.');
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!selectedProfileCustomer) return;
+    try {
+      await customerApi.deleteCustomerOrder(apiUrl, selectedProfileCustomer.id, orderId);
+      await fetchAllData();
+      showToast('🗑️ Order deleted from customer profile.');
+    } catch {
+      showToast('⚠️ Could not delete order.');
     }
   };
 
@@ -263,462 +296,718 @@ export default function CustomerManager({
     }
   };
 
+  // Broadcast handlers & tracking
+  const [sentCustomerIds, setSentCustomerIds] = useState<Record<string, boolean>>({});
+
+  const handleSendBroadcastWhatsapp = (customer: Customer, text: string) => {
+    const url = getWhatsappShareUrl(customer.phone, text);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    showToast(`🟢 WhatsApp chat opened for ${customer.name}!`);
+    setSentCustomerIds((prev) => ({ ...prev, [customer.id]: true }));
+  };
+
+  const handleCopyMessage = (customer: Customer, text: string) => {
+    navigator.clipboard.writeText(text);
+    showToast(`📋 Copied tailored text for ${customer.name}!`);
+  };
+
+  const handleCopyGroupPhones = (targetGroup: string) => {
+    const targetCusts = targetGroup === 'All' ? customers : customers.filter((c) => c.group.toLowerCase() === targetGroup.toLowerCase());
+    const phones = targetCusts.map((c) => c.phone).join(', ');
+    navigator.clipboard.writeText(phones);
+    showToast(`📋 Copied ${targetCusts.length} phone numbers!`);
+  };
+
+  // WhatsApp helper
+  const handleOpenWhatsapp = (customer: Customer) => {
+    const url = getWhatsappShareUrl(
+      formatWhatsappPhone(customer.phone),
+      `Assalamu Alaikum ${customer.name}, greeting from OMNI Sourcing:`
+    );
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   return (
-    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div style={{ width: '100%', maxWidth: '1280px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.75rem', padding: '0 1rem' }}>
+      
       {/* ------------------------------------------------------------- */}
-      {/* TOP HEADER & CONTROL BAR */}
+      {/* 1. UNIVERSAL SEARCH PANEL (PROMINENT AT TOP) */}
       {/* ------------------------------------------------------------- */}
       <div
         style={{
-          background: 'rgba(24, 24, 27, 0.72)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '16px',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--neu-rim)',
+          borderRadius: '20px',
           padding: '1.5rem',
-          boxShadow: '0 4px 24px -1px rgba(0, 0, 0, 0.45)'
+          boxShadow: 'var(--neu-flat-sm)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1rem',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', paddingBottom: '1.25rem', borderBottom: '1px solid #27272a' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#dc2626', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>
-              <Sparkles style={{ width: '16px', height: '16px' }} />
-              <span>Customer Segmentation & Direct Outreach</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--omni-red)', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              <Sparkles size={14} />
+              <span>Universal Customer Finder & Order Entry</span>
             </div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.5px', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Users style={{ width: '28px', height: '28px', color: '#dc2626' }} />
-              Retail Customers & Group Messaging
-            </h1>
-            <p style={{ color: '#a1a1aa', fontSize: '0.85rem', marginTop: '4px', margin: 0 }}>
-              Organize retail clients into targeted groups, send 1-on-1 personal WhatsApp & SMS pitches, or broadcast new product arrivals.
+            <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)', margin: '2px 0 0 0' }}>
+              Universal Customer Search
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', margin: '2px 0 0 0' }}>
+              Search via <strong>Phone Number</strong>, <strong>Customer Name</strong>, or <strong>Delivery Address</strong> to access profile and input order details.
             </p>
           </div>
 
-          {/* Action Buttons Toolbar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <button onClick={handleOpenAdd} style={{ ...buttonActionStyle, backgroundColor: '#dc2626', borderColor: '#dc2626', color: '#ffffff', fontWeight: 700 }}>
-              <UserPlus style={{ width: '16px', height: '16px' }} />
-              <span>+ Add Customer</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={() => setShowMonthlyExcelModal(true)}
+              style={{
+                ...buttonActionStyle,
+                background: '#107c41',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: 700,
+                padding: '8px 16px',
+                boxShadow: '0 4px 12px rgba(16, 124, 65, 0.35)',
+              }}
+              title="Generate monthly orders Excel sheet matching template and separate customer sheets"
+            >
+              <FileSpreadsheet size={15} />
+              <span>Monthly Excel Sheet</span>
             </button>
 
-            <button onClick={() => setShowGroupModal(true)} style={buttonActionStyle}>
-              <FolderPlus style={{ width: '16px', height: '16px', color: '#38bdf8' }} />
-              <span>Manage Groups</span>
+            <button
+              onClick={() => handleOpenAdd()}
+              style={{
+                ...buttonActionStyle,
+                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: 700,
+                padding: '8px 16px',
+                boxShadow: '0 4px 12px rgba(220, 38, 38, 0.35)',
+              }}
+            >
+              <UserPlus size={15} />
+              <span>+ Create Profile</span>
+            </button>
+
+            <button
+              onClick={fetchAllData}
+              title="Refresh database"
+              style={{ ...buttonActionStyle, padding: '8px 10px' }}
+            >
+              <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+
+        {/* Universal Search Input Bar with Live Popover Results */}
+        <UniversalCustomerSearch
+          apiUrl={apiUrl}
+          onSelectCustomer={handleOpenProfile}
+          onOpenNewOrder={handleOpenNewOrder}
+          onCreateNewCustomer={handleOpenAdd}
+          showToast={showToast}
+        />
+      </div>
+
+      {/* ------------------------------------------------------------- */}
+      {/* 2. SUMMARY METRICS CARDS */}
+      {/* ------------------------------------------------------------- */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '12px',
+        }}
+      >
+        <div
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '16px',
+            padding: '1.1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            boxShadow: 'var(--neu-flat-sm)',
+          }}
+        >
+          <div
+            style={{
+              padding: '10px',
+              borderRadius: '12px',
+              background: 'rgba(59, 130, 246, 0.12)',
+              border: '1px solid rgba(59, 130, 246, 0.25)',
+              color: '#3b82f6',
+            }}
+          >
+            <Users size={22} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
+              Customer Profiles
+            </div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+              {customers.length}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '16px',
+            padding: '1.1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            boxShadow: 'var(--neu-flat-sm)',
+          }}
+        >
+          <div
+            style={{
+              padding: '10px',
+              borderRadius: '12px',
+              background: 'rgba(239, 68, 68, 0.12)',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              color: 'var(--omni-red)',
+            }}
+          >
+            <Package size={22} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
+              Total Stored Orders
+            </div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+              {customers.reduce((acc, c) => acc + (c.orders?.length || 0), 0)}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '16px',
+            padding: '1.1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            boxShadow: 'var(--neu-flat-sm)',
+          }}
+        >
+          <div
+            style={{
+              padding: '10px',
+              borderRadius: '12px',
+              background: 'rgba(16, 185, 129, 0.12)',
+              border: '1px solid rgba(16, 185, 129, 0.25)',
+              color: '#10b981',
+            }}
+          >
+            <CheckCircle2 size={22} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
+              Delivered Orders
+            </div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#10b981' }}>
+              {customers.reduce((acc, c) => acc + (c.orders?.filter((o) => o.is_delivered).length || 0), 0)}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '16px',
+            padding: '1.1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            boxShadow: 'var(--neu-flat-sm)',
+          }}
+        >
+          <div
+            style={{
+              padding: '10px',
+              borderRadius: '12px',
+              background: 'rgba(245, 158, 11, 0.12)',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
+              color: '#f59e0b',
+            }}
+          >
+            <Coins size={22} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
+              Total Balance Due
+            </div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#f59e0b' }}>
+              ৳{customers.reduce((acc, c) => acc + (c.total_due || 0), 0).toLocaleString()}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------- */}
+      {/* 3. CUSTOMER PROFILES DIRECTORY */}
+      {/* ------------------------------------------------------------- */}
+      <div
+        style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--neu-rim)',
+          borderRadius: '20px',
+          padding: '1.5rem',
+          boxShadow: 'var(--neu-flat-sm)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1.25rem',
+        }}
+      >
+        {/* Header & Filter Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Users size={18} style={{ color: 'var(--omni-red)' }} />
+              <span>Customer Profiles & Orders ({filteredCustomers.length})</span>
+            </h3>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+              Every customer profile stores their name, phone, address, special notes, and order history.
+            </div>
+          </div>
+
+          {/* Group and In-Table Filters */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>Segment:</span>
+              <select
+                value={selectedGroupFilter}
+                onChange={(e) => setSelectedGroupFilter(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  width: 'auto',
+                  padding: '6px 12px',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                }}
+              >
+                <option value="All">All Groups ({customers.length})</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.name}>{g.name} ({g.member_count})</option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              onClick={() => setShowGroupModal(true)}
+              style={{ ...buttonActionStyle, padding: '6px 12px', fontSize: '0.78rem' }}
+            >
+              <FolderPlus size={14} style={{ color: '#3b82f6' }} />
+              <span>Groups</span>
             </button>
 
             <button
               onClick={() => setShowBroadcastModal(true)}
               style={{
                 ...buttonActionStyle,
-                background: 'linear-gradient(135deg, #10b981 0%, #047857 100%)',
+                background: 'linear-gradient(135deg, #10b981, #059669)',
                 color: '#ffffff',
                 border: 'none',
-                boxShadow: '0 0 12px rgba(16, 185, 129, 0.3)'
+                padding: '6px 14px',
+                fontSize: '0.78rem',
+                fontWeight: 700,
               }}
             >
-              <Send style={{ width: '16px', height: '16px' }} />
-              <span>📢 Broadcast to Group</span>
+              <Send size={13} />
+              <span>Broadcast</span>
             </button>
 
-            {/* Direct Link to VIP Group */}
-            <a
-              href={WHATSAPP_GROUP_URL}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => setShowMonthlyExcelModal(true)}
               style={{
                 ...buttonActionStyle,
-                background: 'rgba(34, 197, 94, 0.15)',
-                border: '1px solid rgba(34, 197, 94, 0.4)',
-                color: '#86efac',
-                textDecoration: 'none',
+                background: '#107c41',
+                color: '#ffffff',
+                border: 'none',
+                padding: '6px 14px',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                boxShadow: '0 4px 12px rgba(16, 124, 65, 0.35)',
               }}
-              title="Open or Join OMNI WhatsApp VIP Sourcing Group"
+              title="Export monthly Excel sheet matching template with separate customer sheets"
             >
-              <span style={{ fontSize: '0.9rem' }}>💬</span>
-              <span>WhatsApp VIP Group</span>
-            </a>
-
-            <button
-              onClick={fetchAllData}
-              title="Refresh data"
-              aria-label="Refresh customer and group data"
-              style={{ ...buttonActionStyle, padding: '9px' }}
-            >
-              <RefreshCw style={{ width: '16px', height: '16px', color: '#a1a1aa' }} />
+              <FileSpreadsheet size={13} />
+              <span>Monthly Excel</span>
             </button>
           </div>
         </div>
 
-        {/* ------------------------------------------------------------- */}
-        {/* TOP STATS CARDS */}
-        {/* ------------------------------------------------------------- */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginTop: '1.25rem' }}>
-          <div style={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#60a5fa' }}>
-              <Users style={{ width: '24px', height: '24px' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Total Customers</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#ffffff' }}>
-                {customers.length} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#a1a1aa' }}>retailers</span>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#fbbf24' }}>
-              <Tag style={{ width: '24px', height: '24px' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Segments & Groups</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fbbf24' }}>
-                {groups.length} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#a1a1aa' }}>active</span>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#34d399' }}>
-              <Smartphone style={{ width: '24px', height: '24px' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>WhatsApp Direct</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#34d399' }}>
-                100% <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#a1a1aa' }}>connected</span>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(220, 38, 38, 0.15)', border: '1px solid rgba(220, 38, 38, 0.3)', color: '#f87171' }}>
-              <ShoppingBag style={{ width: '24px', height: '24px' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>Sourcing Products</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#f87171' }}>
-                {productListItems.length} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#a1a1aa' }}>ready to pitch</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ------------------------------------------------------------- */}
-        {/* GROUP TABS BAR */}
-        {/* ------------------------------------------------------------- */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflowX: 'auto', paddingBottom: '4px', marginTop: '1.5rem', borderBottom: '1px solid #27272a' }}>
-          <button
-            onClick={() => setSelectedGroupFilter('All')}
+        {/* CUSTOMER PROFILES GRID (INDEPENDENT SECTIONS - NO OVERLAPPING) */}
+        {filteredCustomers.length === 0 ? (
+          <div
             style={{
-              padding: '6px 14px',
-              borderRadius: '8px',
-              fontSize: '0.8rem',
-              fontWeight: 700,
-              backgroundColor: selectedGroupFilter === 'All' ? '#dc2626' : '#09090b',
-              color: '#ffffff',
-              border: '1px solid',
-              borderColor: selectedGroupFilter === 'All' ? '#dc2626' : '#27272a',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap'
+              padding: '40px 20px',
+              textAlign: 'center',
+              borderRadius: '16px',
+              border: '1px dashed var(--border-color)',
+              background: 'var(--bg-card)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '12px',
             }}
           >
-            All Customers ({customers.length})
-          </button>
-
-          {groups.map((grp) => {
-            const count = customers.filter((c) => c.group.toLowerCase() === grp.name.toLowerCase()).length;
-            const isSelected = selectedGroupFilter.toLowerCase() === grp.name.toLowerCase();
-            return (
-              <button
-                key={grp.id}
-                onClick={() => setSelectedGroupFilter(grp.name)}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: '8px',
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  backgroundColor: isSelected ? grp.color : '#09090b',
-                  color: '#ffffff',
-                  border: '1px solid',
-                  borderColor: isSelected ? grp.color : '#27272a',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: grp.color }} />
-                <span>{grp.name}</span>
-                <span style={{ fontSize: '0.7rem', padding: '1px 5px', borderRadius: '10px', backgroundColor: 'rgba(0,0,0,0.3)' }}>
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* ------------------------------------------------------------- */}
-        {/* SEARCH & FILTERS BAR */}
-        {/* ------------------------------------------------------------- */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '1rem' }}>
-          <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
-            <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', color: '#71717a' }} />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by customer name, phone, city, notes..."
-              style={{ ...inputStyle, paddingLeft: '36px' }}
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: '#a1a1aa', cursor: 'pointer' }}
-              >
-                <X style={{ width: '14px', height: '14px' }} />
-              </button>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <select
-              value={selectedCategoryFilter}
-              onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-              style={{ ...inputStyle, width: '160px', backgroundColor: '#09090b' }}
-            >
-              <option value="All">All Categories</option>
-              {availableCategories.map((cat) => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <select
-              value={selectedCityFilter}
-              onChange={(e) => setSelectedCityFilter(e.target.value)}
-              style={{ ...inputStyle, width: '140px', backgroundColor: '#09090b' }}
-            >
-              <option value="All">All Cities</option>
-              {availableCities.map((city) => (
-                <option key={city} value={city}>{city}</option>
-              ))}
-            </select>
-          </div>
-
-          {selectedGroupFilter !== 'All' && (
+            <Users size={36} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
+            <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              No customer profiles match the current filter.
+            </div>
             <button
-              onClick={() => handleCopyGroupPhones(selectedGroupFilter)}
-              title="Copy numbers of current group for SMS blast"
-              style={{ ...buttonActionStyle, padding: '9px 12px', fontSize: '0.8rem' }}
+              onClick={() => handleOpenAdd(searchQuery)}
+              style={{
+                ...buttonActionStyle,
+                background: 'var(--omni-red)',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: 700,
+              }}
             >
-              <Copy style={{ width: '14px', height: '14px', color: '#38bdf8' }} />
-              <span>Copy Numbers ({filteredCustomers.length})</span>
+              <UserPlus size={15} />
+              <span>Create Customer Profile</span>
             </button>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
+              gap: '16px',
+            }}
+          >
+            {filteredCustomers.map((cust) => {
+              const activeCount = cust.orders?.filter((o) => !o.is_delivered && !o.is_cancelled).length || 0;
+              const deliveredCount = cust.orders?.filter((o) => o.is_delivered).length || 0;
+              const totalOrders = cust.orders?.length || 0;
 
-        {/* ------------------------------------------------------------- */}
-        {/* CUSTOMER DIRECTORY LIST / TABLE */}
-        {/* ------------------------------------------------------------- */}
-        <div style={{ marginTop: '1.25rem' }}>
-          {loading ? (
-            <div style={{ padding: '3rem', textAlign: 'center', color: '#a1a1aa' }}>
-              Loading customers and groups...
-            </div>
-          ) : filteredCustomers.length === 0 ? (
-            <div style={{ backgroundColor: '#09090b', border: '1px dashed #27272a', borderRadius: '12px', padding: '3rem 1rem', textAlign: 'center' }}>
-              <Users style={{ width: '48px', height: '48px', color: '#3f3f46', margin: '0 auto 12px auto' }} />
-              <p style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '1rem', margin: 0 }}>No customers matched your filter</p>
-              <p style={{ color: '#71717a', fontSize: '0.85rem', marginTop: '6px', margin: 0 }}>
-                Try selecting &quot;All Customers&quot; or click &quot;+ Add Customer&quot; above to register new retailers.
-              </p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {filteredCustomers.map((cust) => {
-                const groupObj = groups.find((g) => g.name.toLowerCase() === cust.group.toLowerCase());
-                const groupColor = groupObj?.color || '#3b82f6';
-                const isSent = sentCustomerIds[cust.id];
-
-                return (
-                  <div
-                    key={cust.id}
-                    style={{
-                      backgroundColor: '#09090b',
-                      border: '1px solid #27272a',
-                      borderRadius: '12px',
-                      padding: '1rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '1rem'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: '260px', flex: 1 }}>
+              return (
+                <div
+                  key={cust.id}
+                  style={{
+                    background: 'var(--bg-card)',
+                    borderRadius: '16px',
+                    border: '1px solid var(--border-color)',
+                    padding: '18px',
+                    boxShadow: 'var(--neu-flat-sm)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px',
+                    position: 'relative',
+                    transition: 'all 0.18s ease',
+                  }}
+                  className="hover-neu-lift"
+                >
+                  {/* Top: Customer Avatar, Name, Group Badge */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div
                         style={{
-                          width: '46px',
-                          height: '46px',
+                          width: '44px',
+                          height: '44px',
                           borderRadius: '12px',
-                          backgroundColor: `${groupColor}20`,
-                          border: `1px solid ${groupColor}50`,
-                          color: groupColor,
-                          fontWeight: 800,
-                          fontSize: '1rem',
+                          background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                          color: '#ffffff',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          flexShrink: 0
-                        }}
-                      >
-                        {cust.name.substring(0, 2).toUpperCase()}
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <h4 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
-                            {cust.name}
-                          </h4>
-                          {cust.city && (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 6px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 600, backgroundColor: '#18181b', color: '#a1a1aa', border: '1px solid #27272a' }}>
-                              <MapPin style={{ width: '10px', height: '10px', color: '#f87171' }} />
-                              {cust.city}
-                            </span>
-                          )}
-                        </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-                          <a
-                            href={`https://wa.me/${formatWhatsappPhone(cust.phone)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ fontSize: '0.8rem', color: '#34d399', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
-                          >
-                            <Smartphone style={{ width: '12px', height: '12px' }} />
-                            <span>{cust.phone}</span>
-                          </a>
-
-                          {cust.email && (
-                            <span style={{ fontSize: '0.75rem', color: '#71717a', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                              <Mail style={{ width: '11px', height: '11px' }} />
-                              {cust.email}
-                            </span>
-                          )}
-                        </div>
-
-                        {cust.notes && (
-                          <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '4px 0 0 0', fontStyle: 'italic' }}>
-                            &ldquo;{cust.notes}&rdquo;
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span
-                        style={{
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          fontSize: '0.72rem',
+                          fontSize: '1.1rem',
                           fontWeight: 800,
-                          backgroundColor: `${groupColor}20`,
-                          color: groupColor,
-                          border: `1px solid ${groupColor}40`,
-                          textTransform: 'uppercase'
+                          boxShadow: '0 4px 10px rgba(239, 68, 68, 0.3)',
+                          flexShrink: 0,
                         }}
                       >
-                        {cust.group}
-                      </span>
+                        {cust.name.charAt(0).toUpperCase()}
+                      </div>
 
-                      <span
-                        style={{
-                          padding: '4px 8px',
-                          borderRadius: '6px',
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          backgroundColor: '#18181b',
-                          color: '#e2e8f0',
-                          border: '1px solid #3f3f46'
-                        }}
-                      >
-                        {cust.category}
-                      </span>
-
-                      <div style={{ textAlign: 'right', minWidth: '65px' }}>
-                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#71717a', fontWeight: 700 }}>Orders</div>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#fbbf24' }}>
-                          {cust.total_orders} orders
+                      <div>
+                        <div style={{ fontSize: '0.98rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: '1.2' }}>
+                          {cust.name}
                         </div>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            marginTop: '3px',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            padding: '1px 6px',
+                            borderRadius: '6px',
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            color: 'var(--omni-red)',
+                            border: '1px solid rgba(239, 68, 68, 0.25)',
+                          }}
+                        >
+                          {cust.group}
+                        </span>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <button
-                        onClick={() => {
-                          setTargetCustomerForMsg(cust);
-                          setShowPersonalMsgModal(true);
-                        }}
-                        aria-label={`Send direct message to ${cust.name}`}
-                        style={{
-                          padding: '8px 12px',
-                          borderRadius: '8px',
-                          backgroundColor: isSent ? '#047857' : '#10b981',
-                          color: '#ffffff',
-                          fontSize: '0.8rem',
-                          fontWeight: 700,
-                          border: 'none',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          cursor: 'pointer',
-                          boxShadow: '0 0 10px rgba(16, 185, 129, 0.3)'
-                        }}
-                      >
-                        {isSent ? <CheckCircle2 style={{ width: '14px', height: '14px' }} /> : <MessageSquare style={{ width: '14px', height: '14px' }} />}
-                        <span>{isSent ? 'Sent' : 'Direct Msg'}</span>
-                      </button>
+                    {/* Quick WhatsApp Link */}
+                    <button
+                      onClick={() => handleOpenWhatsapp(cust)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '10px',
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        color: '#10b981',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        flexShrink: 0,
+                      }}
+                      title="Open direct WhatsApp conversation"
+                    >
+                      <MessageSquare size={13} />
+                      <span>WhatsApp</span>
+                    </button>
+                  </div>
 
-                      <button
-                        onClick={() => handleOpenEdit(cust)}
-                        title="Edit Customer"
-                        aria-label={`Edit customer ${cust.name}`}
-                        style={{ padding: '8px', backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px', color: '#a1a1aa', cursor: 'pointer' }}
-                      >
-                        <Edit3 style={{ width: '14px', height: '14px' }} />
-                      </button>
+                  {/* Contact & Address Details */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.82rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-primary)', fontWeight: 600 }}>
+                      <Phone size={13} style={{ color: 'var(--omni-red)', flexShrink: 0 }} />
+                      <a href={`tel:${cust.phone}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                        {cust.phone}
+                      </a>
+                    </div>
 
-                      <button
-                        onClick={() => handleDeleteCustomer(cust.id, cust.name)}
-                        title="Delete Customer"
-                        aria-label={`Delete customer ${cust.name}`}
-                        style={{ padding: '8px', backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px', color: '#f87171', cursor: 'pointer' }}
-                      >
-                        <Trash2 style={{ width: '14px', height: '14px' }} />
-                      </button>
+                    {cust.address && (
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+                        <MapPin size={13} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: '2px' }} />
+                        <span style={{ lineHeight: '1.3' }}>{cust.address}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Special Requirements / Brief Notes (if present) */}
+                  {cust.notes && (
+                    <div
+                      style={{
+                        padding: '8px 10px',
+                        borderRadius: '10px',
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--neu-inset-border)',
+                        fontSize: '0.75rem',
+                        color: 'var(--text-muted)',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '6px',
+                      }}
+                    >
+                      <FileText size={13} style={{ color: '#8b5cf6', flexShrink: 0, marginTop: '2px' }} />
+                      <span style={{ fontStyle: 'italic', lineHeight: '1.3', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        {cust.notes}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Stored Orders Summary Strip */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: '8px',
+                      background: 'var(--bg-surface)',
+                      padding: '8px 12px',
+                      borderRadius: '12px',
+                      border: '1px solid var(--border-color)',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>Orders</div>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        {totalOrders}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '0.65rem', color: '#10b981', fontWeight: 600 }}>Delivered</div>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#10b981' }}>
+                        {deliveredCount}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '0.65rem', color: cust.total_due > 0 ? '#ef4444' : '#10b981', fontWeight: 600 }}>
+                        Balance Due
+                      </div>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 800, color: cust.total_due > 0 ? '#ef4444' : '#10b981' }}>
+                        ৳{cust.total_due.toLocaleString()}
+                      </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+
+                  {/* Action Buttons Toolbar */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '6px',
+                      paddingTop: '8px',
+                      borderTop: '1px solid var(--border-color)',
+                    }}
+                  >
+                    {/* View Profile & Orders */}
+                    <button
+                      onClick={() => handleOpenProfile(cust)}
+                      style={{
+                        flex: 1,
+                        padding: '7px 10px',
+                        borderRadius: '10px',
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--neu-rim)',
+                        boxShadow: 'var(--neu-flat-sm)',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '5px',
+                      }}
+                      title="Open Profile & View All Orders"
+                    >
+                      <Package size={14} style={{ color: 'var(--omni-red)' }} />
+                      <span>View Orders ({totalOrders})</span>
+                    </button>
+
+                    {/* Quick Input Order */}
+                    <button
+                      onClick={() => handleOpenNewOrder(cust)}
+                      style={{
+                        padding: '7px 12px',
+                        borderRadius: '10px',
+                        background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                        border: 'none',
+                        color: '#ffffff',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        boxShadow: '0 2px 8px rgba(220, 38, 38, 0.35)',
+                      }}
+                      title="Input new order for this customer"
+                    >
+                      <Plus size={14} />
+                      <span>Order</span>
+                    </button>
+
+                    {/* Edit Profile */}
+                    <button
+                      onClick={() => handleOpenEdit(cust)}
+                      style={{
+                        padding: '7px 9px',
+                        borderRadius: '10px',
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--neu-rim)',
+                        color: 'var(--text-secondary)',
+                        cursor: 'pointer',
+                      }}
+                      title="Edit Customer Profile"
+                    >
+                      <Edit3 size={13} />
+                    </button>
+
+                    {/* Delete Customer */}
+                    <button
+                      onClick={() => handleDeleteCustomer(cust.id, cust.name)}
+                      style={{
+                        padding: '7px 9px',
+                        borderRadius: '10px',
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--neu-rim)',
+                        color: '#ef4444',
+                        cursor: 'pointer',
+                      }}
+                      title="Delete Customer Profile"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Modular Sub-component Modals */}
+      {/* ------------------------------------------------------------- */}
+      {/* 4. MODALS (INDEPENDENT LAYERS, NO OVERLAPPING) */}
+      {/* ------------------------------------------------------------- */}
+      
+      {/* Customer Form Modal (Create / Edit) */}
       <CustomerFormModal
         isOpen={showAddModal}
-        onClose={() => {
-          setShowAddModal(false);
-          setEditingCustomer(null);
-        }}
+        onClose={() => setShowAddModal(false)}
         editingCustomer={editingCustomer}
         groups={groups}
+        prefilledQuery={prefillQuery}
         onSave={handleSaveCustomer}
         isSaving={savingCustomer}
       />
 
+      {/* Customer Profile & All Stored Orders Modal */}
+      {selectedProfileCustomer && (
+        <CustomerProfileModal
+          isOpen={!!selectedProfileCustomer}
+          onClose={() => {
+            setSelectedProfileCustomer(null);
+            if (onClearSelectedCustomer) onClearSelectedCustomer();
+          }}
+          customer={selectedProfileCustomer}
+          onUpdateProfile={async (cid, payload) => {
+            const updated = await customerApi.updateCustomer(apiUrl, cid, payload);
+            setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+            setSelectedProfileCustomer(updated);
+          }}
+          onAddNewOrder={(cust) => handleOpenNewOrder(cust)}
+          onEditOrder={(order) => handleOpenEditOrder(order)}
+          onToggleOrderStatus={handleToggleOrderStatus}
+          onDeleteOrder={handleDeleteOrder}
+          onEditCustomerProfile={(cust) => handleOpenEdit(cust)}
+          showToast={showToast}
+        />
+      )}
+
+      {/* Customer Order Details Input Modal */}
+      {showOrderModal && targetCustomerForOrder && (
+        <CustomerOrderModal
+          isOpen={showOrderModal}
+          onClose={() => {
+            setShowOrderModal(false);
+            setOrderToEdit(null);
+          }}
+          customer={targetCustomerForOrder}
+          orderToEdit={orderToEdit}
+          onSaveOrder={handleSaveOrder}
+          showToast={showToast}
+        />
+      )}
+
+      {/* Manage Groups Modal */}
       <GroupFormModal
         isOpen={showGroupModal}
         onClose={() => setShowGroupModal(false)}
@@ -728,20 +1017,7 @@ export default function CustomerManager({
         isSaving={savingGroup}
       />
 
-      <PersonalMessageModal
-        isOpen={showPersonalMsgModal}
-        onClose={() => {
-          setShowPersonalMsgModal(false);
-          setTargetCustomerForMsg(null);
-        }}
-        targetCustomer={targetCustomerForMsg}
-        productListItems={productListItems}
-        initialSelectedProduct={initialSelectedProduct}
-        onCopyMessage={handleCopyMessage}
-        onSendWhatsapp={handleSendWhatsapp}
-        onSendSms={handleSendSms}
-      />
-
+      {/* Broadcast Modal */}
       <BroadcastModal
         isOpen={showBroadcastModal}
         onClose={() => setShowBroadcastModal(false)}
@@ -749,10 +1025,18 @@ export default function CustomerManager({
         groups={groups}
         productListItems={productListItems}
         initialSelectedProduct={initialSelectedProduct}
-        onSendWhatsapp={handleSendWhatsapp}
+        onSendWhatsapp={handleSendBroadcastWhatsapp}
         onCopyMessage={handleCopyMessage}
         onCopyGroupPhones={handleCopyGroupPhones}
         sentCustomerIds={sentCustomerIds}
+      />
+
+      {/* Monthly Excel Sheet & Customer Ledgers Modal */}
+      <MonthlyExcelModal
+        isOpen={showMonthlyExcelModal}
+        onClose={() => setShowMonthlyExcelModal(false)}
+        customers={customers}
+        showToast={showToast}
       />
     </div>
   );

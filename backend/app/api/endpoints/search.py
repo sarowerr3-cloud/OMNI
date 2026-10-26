@@ -1,9 +1,13 @@
 import asyncio
+import hashlib
 import logging
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, Query, HTTPException, File, UploadFile, Form
+from fastapi import APIRouter, Query, HTTPException, File, UploadFile, Form, Request
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
 from backend.app.schemas.product import ProductBase, CostBreakdown, MarketMarginAnalysis, LocalMarketBenchmark
 from backend.app.connectors.sourcing import aliexpress_connector, connector_1688, pdd_connector
 from backend.app.connectors.bd_market import bd_market_connector
@@ -12,9 +16,43 @@ from backend.app.services.pricing_engine import pricing_engine
 from backend.app.services.gemini_service import gemini_service
 from backend.app.services.claude_service import claude_service
 from backend.app.services.ai_orchestrator import ai_orchestrator
+from backend.app.db.redis_client import cache_get, cache_set
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
+
+# Cap concurrent Claude API calls to prevent rate bursts
+_AI_SEMAPHORE = asyncio.Semaphore(5)
+
+
+async def get_claude_insight_cached(
+    product_title: str,
+    landed_cost_bdt: float,
+    bd_avg_retail_price_bdt: float,
+    estimated_margin_percent: float,
+    moq: int
+) -> dict:
+    """Get Claude AI insight with 24-hour Redis caching."""
+    cache_key = "ai:claude:" + hashlib.md5(
+        f"{product_title}:{landed_cost_bdt:.0f}:{estimated_margin_percent:.1f}".encode()
+    ).hexdigest()
+
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
+
+    async with _AI_SEMAPHORE:
+        result = await claude_service.analyze_sourcing_market(
+            product_title=product_title,
+            landed_cost_bdt=landed_cost_bdt,
+            bd_avg_retail_price_bdt=bd_avg_retail_price_bdt,
+            estimated_margin_percent=estimated_margin_percent,
+            moq=moq
+        )
+
+    await cache_set(cache_key, result, ttl_seconds=86400)
+    return result
 
 
 class SearchRequest(BaseModel):
@@ -40,8 +78,10 @@ class SearchResponse(BaseModel):
     rate_rmb_bdt: Decimal
     image_analysis: Optional[Dict[str, Any]] = None
     ai_status: Optional[Dict[str, Any]] = None
+    data_source: str = "live"  # "live" | "fallback" | "cached"
     sourcing_results: List[SourcedProductResult]
     bd_market_benchmarks: List[LocalMarketBenchmark]
+
 
 
 class ManualCalculatorRequest(BaseModel):
@@ -81,7 +121,8 @@ class ManualCalculatorResponse(BaseModel):
 
 
 @router.post("/search", response_model=SearchResponse, tags=["Sourcing & Market Benchmark"])
-async def search_products(req: SearchRequest):
+@limiter.limit("10/minute")
+async def search_products(request: Request, req: SearchRequest):
     """
     Search product by text across AliExpress, 1688, and Pinduoduo using user-defined RMB exchange rate,
     calculate Landed Cost (BDT ৳), discover Bangladesh Local Market Prices (Daraz, FB, IG, TikTok),
@@ -127,9 +168,9 @@ async def search_products(req: SearchRequest):
         )
         product_analyses.append((product, breakdown, analysis))
 
-    # Step 2: Fire all Claude AI insight calls in parallel (3x speed boost)
+    # Step 2: Fire all Claude AI insight calls in parallel with Redis caching and concurrency limit
     claude_tasks = [
-        claude_service.analyze_sourcing_market(
+        get_claude_insight_cached(
             product_title=product.title_en or product.title_original,
             landed_cost_bdt=float(breakdown.per_unit_landed_cost),
             bd_avg_retail_price_bdt=float(analysis.local_bd_market_avg_price),
@@ -165,13 +206,16 @@ async def search_products(req: SearchRequest):
         shipping_method=req.shipping_method,
         rate_rmb_bdt=rmb_rate,
         ai_status=ai_orchestrator.get_status(),
+        data_source="live" if gemini_service.is_configured else "fallback",
         sourcing_results=sourced_results,
         bd_market_benchmarks=bd_benchmarks
     )
 
 
 @router.post("/search/image", response_model=SearchResponse, tags=["Sourcing & Market Benchmark"])
+@limiter.limit("5/minute")
 async def search_products_by_image(
+    request: Request,
     file: UploadFile = File(...),
     quantity: int = Form(10),
     shipping_method: str = Form("air"),
@@ -275,9 +319,9 @@ async def search_products_by_image(
         )
         product_analyses.append((product, breakdown, margin_analysis))
 
-    # Step 2: Fire all Claude AI insight calls in parallel (3x speed boost)
+    # Step 2: Fire all Claude AI insight calls in parallel with Redis caching and concurrency limit
     claude_tasks = [
-        claude_service.analyze_sourcing_market(
+        get_claude_insight_cached(
             product_title=product.title_en or product.title_original,
             landed_cost_bdt=float(breakdown.per_unit_landed_cost),
             bd_avg_retail_price_bdt=float(margin_analysis.local_bd_market_avg_price),
@@ -313,6 +357,7 @@ async def search_products_by_image(
         rate_rmb_bdt=parsed_rate,
         image_analysis=analysis,
         ai_status=ai_orchestrator.get_status(),
+        data_source="live" if gemini_service.is_configured else "fallback",
         sourcing_results=sourced_results,
         bd_market_benchmarks=bd_benchmarks
     )

@@ -3,16 +3,19 @@ import logging
 from typing import Dict, Any
 from fastapi import APIRouter
 import httpx
+from backend.app.db.redis_client import cache_get, cache_set
 
 router = APIRouter(prefix="/rates", tags=["Exchange Rates"])
 logger = logging.getLogger(__name__)
 
-# In-memory cache with 1-hour TTL
-_RATE_CACHE: Dict[str, Any] = {
+RATE_CACHE_KEY = "rates:live:cny"
+CACHE_TTL_SECONDS = 3600
+
+# In-memory fallback cache if Redis is offline
+_FALLBACK_CACHE: Dict[str, Any] = {
     "data": None,
     "last_fetched": 0,
 }
-CACHE_TTL_SECONDS = 3600
 
 # Default benchmark rates for China-to-Bangladesh trade
 DEFAULT_RATES = {
@@ -36,11 +39,18 @@ async def get_live_rates():
     """
     Fetch live exchange rates for China and international sourcing to Bangladesh BDT.
     Provides interbank rates and commercial landed agent settlement rates.
-    Cached with a 1-hour TTL.
+    Cached with a 1-hour TTL via Redis (with in-memory fallback).
     """
     now = time.time()
-    if _RATE_CACHE["data"] and (now - _RATE_CACHE["last_fetched"] < CACHE_TTL_SECONDS):
-        return {**_RATE_CACHE["data"], "cached": True}
+
+    # 1. Try Redis cache
+    cached = await cache_get(RATE_CACHE_KEY)
+    if cached:
+        return {**cached, "cached": True}
+
+    # 2. Try in-memory fallback cache
+    if _FALLBACK_CACHE["data"] and (now - _FALLBACK_CACHE["last_fetched"] < CACHE_TTL_SECONDS):
+        return {**_FALLBACK_CACHE["data"], "cached": True}
 
     try:
         async with httpx.AsyncClient(timeout=4.0) as client:
@@ -53,7 +63,6 @@ async def get_live_rates():
 
                 if cny_to_bdt_raw:
                     interbank = round(float(cny_to_bdt_raw), 2)
-                    # Commercial import settlement rate for BD importers typically includes ~15-18% bank LC/agent transfer fee
                     commercial_rate = round(interbank * 1.165, 2)
                     usd_to_bdt = round((float(cny_to_bdt_raw) / float(cny_to_usd_raw)), 2) if cny_to_usd_raw else 121.50
 
@@ -70,14 +79,16 @@ async def get_live_rates():
                         "updated_at": int(now),
                         "cached": False,
                     }
-                    _RATE_CACHE["data"] = result
-                    _RATE_CACHE["last_fetched"] = now
+                    _FALLBACK_CACHE["data"] = result
+                    _FALLBACK_CACHE["last_fetched"] = now
+                    await cache_set(RATE_CACHE_KEY, result, ttl_seconds=CACHE_TTL_SECONDS)
                     return result
     except Exception as exc:
         logger.warning(f"Failed to fetch live FX rate, using defaults: {exc}")
 
     # Fallback if network fails
     fallback_data = {**DEFAULT_RATES, "updated_at": int(now), "cached": False}
-    _RATE_CACHE["data"] = fallback_data
-    _RATE_CACHE["last_fetched"] = now
+    _FALLBACK_CACHE["data"] = fallback_data
+    _FALLBACK_CACHE["last_fetched"] = now
+    await cache_set(RATE_CACHE_KEY, fallback_data, ttl_seconds=CACHE_TTL_SECONDS)
     return fallback_data

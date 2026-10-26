@@ -39,8 +39,33 @@ import {
   Copy,
   ChevronLeft,
   ChevronRight,
-  ZoomIn
+  ZoomIn,
+  FileSpreadsheet,
+  CheckSquare,
+  ListChecks
 } from 'lucide-react';
+import { exportSingleOrderToExcel, exportAllOrdersToExcel } from '@/lib/excelExport';
+import { getAuthHeaders } from '@/services/customerApi';
+
+
+export interface ChecklistTask {
+  id: string;
+  text: string;
+  completed: boolean;
+  category?: 'sourcing' | 'payment' | 'shipping' | 'delivery' | 'custom';
+}
+
+export const DEFAULT_SOURCING_CHECKLIST: ChecklistTask[] = [
+  { id: 'task-1', text: 'Supplier / Factory stock confirmed (1688 / Taobao / Factory Direct)', completed: false, category: 'sourcing' },
+  { id: 'task-2', text: 'Sample photos & product specifications verified with supplier', completed: false, category: 'sourcing' },
+  { id: 'task-3', text: 'Customer advance deposit received & receipt issued', completed: false, category: 'payment' },
+  { id: 'task-4', text: 'Cargo freight rate & logistics route confirmed with agent', completed: false, category: 'shipping' },
+  { id: 'task-5', text: 'Goods arrived at China warehouse & inspected for damages', completed: false, category: 'shipping' },
+  { id: 'task-6', text: 'Package weighed, boxed & gross weight verified', completed: false, category: 'shipping' },
+  { id: 'task-7', text: 'Air / Sea Cargo booked & transit tracking generated', completed: false, category: 'delivery' },
+  { id: 'task-8', text: 'Customs clearance completed in Bangladesh warehouse', completed: false, category: 'delivery' },
+  { id: 'task-9', text: 'Final customer payment collected & parcel dispatched', completed: false, category: 'payment' },
+];
 
 export interface ProductItem {
   id: string;
@@ -64,6 +89,8 @@ export interface ProductItem {
   line_weight_price_bdt?: number;
   combined_unit_price_bdt?: number;
   combined_line_total_bdt?: number;
+  // Sourcing checklist check state
+  is_checked?: boolean;
 }
 
 export interface SavedProductList {
@@ -84,6 +111,7 @@ export interface SavedProductList {
   freight_unit?: string;
   payment_status?: string;
   notes?: string;
+  checklist?: ChecklistTask[];
   created_at?: string;
   updated_at?: string;
 }
@@ -263,6 +291,29 @@ export default function ProductListBuilder({
   const [savingToServer, setSavingToServer] = useState<boolean>(false);
   const [downloadingPdf, setDownloadingPdf] = useState<boolean>(false);
 
+  // Save Sourcing List Modal State
+  const [showSaveListModal, setShowSaveListModal] = useState<boolean>(false);
+  const [saveListNameInput, setSaveListNameInput] = useState<string>('');
+  const [saveBrandNameInput, setSaveBrandNameInput] = useState<string>('');
+  const [saveDateInput, setSaveDateInput] = useState<string>(getTodayDate());
+  const [saveNotesInput, setSaveNotesInput] = useState<string>('');
+
+  // Sourcing & Order To-Do Checklist State
+  const [checklist, setChecklist] = useState<ChecklistTask[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('omni_builder_checklist');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return DEFAULT_SOURCING_CHECKLIST;
+  });
+  const [newChecklistText, setNewChecklistText] = useState<string>('');
+  const [showChecklistSection, setShowChecklistSection] = useState<boolean>(true);
+
   // Lightbox Photo Viewer State
   const [previewModal, setPreviewModal] = useState<{
     title: string;
@@ -312,6 +363,9 @@ export default function ProductListBuilder({
           if (parsed.freightRate) setFreightRate(parsed.freightRate);
           if (parsed.freightUnit) setFreightUnit(parsed.freightUnit);
           if (typeof parsed.includeWeightInTotal === 'boolean') setIncludeWeightInTotal(parsed.includeWeightInTotal);
+          if (parsed.checklist && Array.isArray(parsed.checklist) && parsed.checklist.length > 0) {
+            setChecklist(parsed.checklist);
+          }
         }
       } catch (e) {
         console.error('Failed to load local cached product list:', e);
@@ -330,6 +384,7 @@ export default function ProductListBuilder({
         freightRate,
         freightUnit,
         includeWeightInTotal,
+        checklist,
         items
       };
       try {
@@ -344,7 +399,7 @@ export default function ProductListBuilder({
         // ignore
       }
     }
-  }, [listName, brandName, listDate, listNotes, items, currentListId, freightRate, freightUnit, includeWeightInTotal]);
+  }, [listName, brandName, listDate, listNotes, items, currentListId, freightRate, freightUnit, includeWeightInTotal, checklist]);
 
   // Reset / Refresh Product List Builder to clean default state
   const resetToDefaultBuilder = () => {
@@ -365,8 +420,10 @@ export default function ProductListBuilder({
     setNewProductUrl('');
     setNewImageUrl('');
     setNewImages([]);
+    setChecklist(DEFAULT_SOURCING_CHECKLIST);
     try {
       localStorage.removeItem('omni_active_product_list');
+      localStorage.removeItem('omni_builder_checklist');
     } catch (e) {
       // ignore
     }
@@ -848,6 +905,11 @@ export default function ProductListBuilder({
   const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 1), 0);
   const totalItemsCount = items.length;
 
+  // Sourcing & Order Checklist metrics
+  const checklistCompletedCount = checklist.filter(t => t.completed).length;
+  const checklistProgress = checklist.length > 0 ? Math.round((checklistCompletedCount / checklist.length) * 100) : 0;
+  const checkedItemsCount = items.filter(it => it.is_checked).length;
+
   // Estimated Landed Cost (Total Product Price + Air Freight + 20% Duty/Fees)
   const totalFreightBdt = totalWeightPriceBdt > 0 ? totalWeightPriceBdt : totalWeightKg * 1200;
   const estimatedLandedTotalBdt = totalPriceBdt + totalFreightBdt + totalPriceBdt * 0.20;
@@ -861,22 +923,119 @@ export default function ProductListBuilder({
     }
   };
 
-  // Save to Backend API & Refresh to default page
-  const handleSaveToServer = async () => {
+  // Checklists and Tasks Handlers
+  const handleToggleChecklistTask = (id: string) => {
+    setChecklist(prev => {
+      const updated = prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
+      try {
+        localStorage.setItem('omni_builder_checklist', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  };
+
+  const handleAddCustomTask = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newChecklistText.trim();
+    if (!trimmed) return;
+    const newTask: ChecklistTask = {
+      id: `custom-task-${Date.now()}`,
+      text: trimmed,
+      completed: false,
+      category: 'custom'
+    };
+    setChecklist(prev => {
+      const updated = [...prev, newTask];
+      try {
+        localStorage.setItem('omni_builder_checklist', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+    setNewChecklistText('');
+    showToast('✓ Custom to-do task added');
+  };
+
+  const handleRemoveChecklistTask = (id: string) => {
+    setChecklist(prev => {
+      const updated = prev.filter(t => t.id !== id);
+      try {
+        localStorage.setItem('omni_builder_checklist', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+    showToast('Task removed from checklist');
+  };
+
+  const handleResetChecklist = () => {
+    setChecklist(DEFAULT_SOURCING_CHECKLIST);
+    try {
+      localStorage.setItem('omni_builder_checklist', JSON.stringify(DEFAULT_SOURCING_CHECKLIST));
+    } catch (e) {}
+    showToast('🔄 Checklist reset to default milestones');
+  };
+
+  const handleToggleItemChecked = (itemId: string) => {
+    const updated = items.map(it => it.id === itemId ? { ...it, is_checked: !it.is_checked } : it);
+    onUpdateItems(updated);
+  };
+
+  const handleCheckAllItems = () => {
+    const updated = items.map(it => ({ ...it, is_checked: true }));
+    onUpdateItems(updated);
+    showToast('✓ All product items marked as sourced!');
+  };
+
+  const handleUncheckAllItems = () => {
+    const updated = items.map(it => ({ ...it, is_checked: false }));
+    onUpdateItems(updated);
+    showToast('Unchecked all product items');
+  };
+
+  // Open Save Sourcing List Modal
+  const handleOpenSaveModal = () => {
+    if (items.length === 0) {
+      showToast('⚠️ Cannot save an empty list! Add some products first.');
+      return;
+    }
+    setSaveListNameInput(listName.trim() || `Sourcing Order - ${listDate}`);
+    setSaveBrandNameInput(brandName.trim() || 'OMNI SOURCING');
+    setSaveDateInput(listDate);
+    setSaveNotesInput(listNotes || '');
+    setShowSaveListModal(true);
+  };
+
+  // Save alias that opens the save modal
+  const handleSaveToServer = () => {
+    handleOpenSaveModal();
+  };
+
+  // Execute Save (Dual option: Keep Working vs Start New List)
+  const handleExecuteSave = async (startNewList: boolean = false) => {
     if (items.length === 0) {
       showToast('⚠️ Cannot save an empty list! Add some products first.');
       return;
     }
 
+    const finalListName = saveListNameInput.trim() || listName.trim() || 'My Sourcing Product List';
+    const finalBrandName = saveBrandNameInput.trim() || brandName.trim() || 'OMNI SOURCING';
+    const finalDate = saveDateInput || listDate;
+    const finalNotes = saveNotesInput.trim();
+
+    setListName(finalListName);
+    setBrandName(finalBrandName);
+    setListDate(finalDate);
+    setListNotes(finalNotes);
+
     setSavingToServer(true);
     try {
       const payload = {
-        name: listName.trim() || 'My Sourcing Product List',
-        brand_name: brandName.trim() || 'OMNI SOURCING',
-        date: listDate,
-        notes: listNotes,
+        name: finalListName,
+        brand_name: finalBrandName,
+        date: finalDate,
+        notes: finalNotes,
         freight_rate: Number(freightRate) || 1.2,
         freight_unit: freightUnit,
+        checklist: checklist || [],
         items: items.map(it => {
           const unitWeightPrice = getItemUnitWeightPrice(it);
           const lineWeightPrice = getItemLineWeightPrice(it);
@@ -893,7 +1052,8 @@ export default function ProductListBuilder({
             paid_amount_bdt: getItemPaid(it),
             due_amount: getItemDue(it),
             due_amount_bdt: getItemDue(it),
-            payment_status: getItemStatus(it)
+            payment_status: getItemStatus(it),
+            is_checked: !!it.is_checked
           };
         }),
         total_price_bdt: totalProductPriceBdt,
@@ -908,28 +1068,75 @@ export default function ProductListBuilder({
       if (currentListId) {
         res = await fetch(`${apiUrl}/product-lists/${currentListId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify(payload)
         });
       } else {
         res = await fetch(`${apiUrl}/product-lists`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify(payload)
         });
       }
 
-      if (res.ok) {
-        showToast('💾 List saved successfully to database! Refreshed to default Product List Builder.');
+      if (res && res.ok) {
+        try {
+          const savedData = await res.json();
+          if (savedData?.id) {
+            setCurrentListId(savedData.id);
+          }
+        } catch (e) {}
+      }
+
+      // Also persist to localStorage omni_saved_product_lists as safe backup
+      try {
+        const localSaved = localStorage.getItem('omni_saved_product_lists');
+        const listArr: SavedProductList[] = localSaved ? JSON.parse(localSaved) : [];
+        const newEntry: SavedProductList = {
+          id: currentListId || `local-${Date.now()}`,
+          name: finalListName,
+          brand_name: finalBrandName,
+          date: finalDate,
+          items: items,
+          total_price_bdt: totalProductPriceBdt,
+          total_weight_kg: totalWeightKg,
+          total_items_count: items.length,
+          total_quantity: totalQuantity,
+          total_paid_bdt: totalPaidBdt,
+          total_due_bdt: totalDueBdt,
+          total_weight_price_bdt: totalWeightPriceBdt,
+          grand_total_bdt: grandTotalBdt,
+          freight_rate: Number(freightRate) || 1.2,
+          freight_unit: freightUnit,
+          notes: finalNotes,
+          checklist: checklist
+        };
+        const existingIdx = listArr.findIndex(l => l.id === newEntry.id);
+        if (existingIdx >= 0) {
+          listArr[existingIdx] = newEntry;
+        } else {
+          listArr.unshift(newEntry);
+        }
+        localStorage.setItem('omni_saved_product_lists', JSON.stringify(listArr));
+      } catch (e) {}
+
+      setShowSaveListModal(false);
+
+      if (startNewList) {
+        showToast(`💾 Saved "${finalListName}"! Starting a fresh new list.`);
         resetToDefaultBuilder();
       } else {
-        showToast('💾 Saved list locally to browser storage! Refreshed to default Product List Builder.');
-        resetToDefaultBuilder();
+        showToast(`💾 List "${finalListName}" saved successfully! You can keep editing.`);
       }
     } catch (err) {
-      console.error('Server save error:', err);
-      showToast('💾 Saved list locally to browser storage! Refreshed to default Product List Builder.');
-      resetToDefaultBuilder();
+      console.error('Save error:', err);
+      setShowSaveListModal(false);
+      if (startNewList) {
+        showToast('💾 Saved list locally! Starting fresh new list.');
+        resetToDefaultBuilder();
+      } else {
+        showToast('💾 List saved locally to browser storage! You can keep editing.');
+      }
     } finally {
       setSavingToServer(false);
     }
@@ -940,7 +1147,9 @@ export default function ProductListBuilder({
     setShowSavedModal(true);
     setLoadingSaved(true);
     try {
-      const res = await fetch(`${apiUrl}/product-lists`);
+      const res = await fetch(`${apiUrl}/product-lists`, {
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
         setSavedLists(data);
@@ -962,6 +1171,15 @@ export default function ProductListBuilder({
     if (saved.freight_rate) setFreightRate(String(saved.freight_rate));
     if (saved.freight_unit && (saved.freight_unit === 'per_gm' || saved.freight_unit === 'per_kg')) {
       setFreightUnit(saved.freight_unit as any);
+    }
+
+    if (saved.checklist && Array.isArray(saved.checklist) && saved.checklist.length > 0) {
+      setChecklist(saved.checklist);
+      try {
+        localStorage.setItem('omni_builder_checklist', JSON.stringify(saved.checklist));
+      } catch (e) {}
+    } else {
+      setChecklist(DEFAULT_SOURCING_CHECKLIST);
     }
 
     const loadedItems: ProductItem[] = (saved.items || []).map((it) => {
@@ -988,7 +1206,8 @@ export default function ProductListBuilder({
         combined_line_total_bdt: combinedLineTotal,
         paid_amount: paid,
         due_amount: due,
-        payment_status: status
+        payment_status: status,
+        is_checked: !!it.is_checked
       };
     });
 
@@ -1002,7 +1221,10 @@ export default function ProductListBuilder({
     e.stopPropagation();
     if (!confirm('Are you sure you want to delete this saved list?')) return;
     try {
-      await fetch(`${apiUrl}/product-lists/${id}`, { method: 'DELETE' });
+      await fetch(`${apiUrl}/product-lists/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
       setSavedLists(savedLists.filter((l) => l.id !== id));
       showToast('🗑️ Saved list deleted');
     } catch (err) {
@@ -1213,6 +1435,29 @@ export default function ProductListBuilder({
     resetToDefaultBuilder();
   };
 
+  // Export formatted Excel (.xlsx) file
+  const handleExportExcel = () => {
+    if (items.length === 0) {
+      showToast('⚠️ No items to export!');
+      return;
+    }
+    try {
+      exportSingleOrderToExcel({
+        name: listName,
+        brand_name: brandName,
+        date: listDate,
+        items,
+        freight_rate: Number(freightRate) || 1.2,
+        freight_unit: freightUnit,
+        notes: listNotes,
+      });
+      showToast('📗 Excel (.xlsx) file downloaded successfully!');
+    } catch (err: any) {
+      console.error('Excel export error:', err);
+      showToast('❌ Excel export failed');
+    }
+  };
+
   // Export A4 PDF Download (supports 'single_page' strict 1-page fit & 'multi_page' full manifest flow)
   const handleDownloadA4Pdf = async () => {
     if (items.length === 0) {
@@ -1274,15 +1519,16 @@ export default function ProductListBuilder({
     resetToDefaultBuilder();
   };
 
-  // Common Input Base Style Object
+  // Common Input Base Style Object (Neumorphic Sunken Well)
   const inputStyle: React.CSSProperties = {
     width: '100%',
-    backgroundColor: 'var(--bg-surface, #09090b)',
-    border: '1px solid var(--border-color, #3f3f46)',
-    borderRadius: '8px',
-    padding: '9px 12px',
+    backgroundColor: 'var(--bg-surface)',
+    border: '1px solid var(--neu-inset-border)',
+    borderRadius: '12px',
+    boxShadow: 'var(--neu-sunken)',
+    padding: '10px 14px',
     fontSize: '0.9rem',
-    color: 'var(--text-primary, #ffffff)',
+    color: 'var(--text-primary)',
     outline: 'none',
     boxSizing: 'border-box'
   };
@@ -1293,20 +1539,21 @@ export default function ProductListBuilder({
     gap: '6px',
     fontSize: '0.75rem',
     fontWeight: 700,
-    color: 'var(--text-secondary, #e2e8f0)',
+    color: 'var(--text-secondary)',
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
     marginBottom: '6px'
   };
 
   const buttonActionStyle: React.CSSProperties = {
-    padding: '8px 14px',
-    borderRadius: '10px',
-    backgroundColor: 'var(--bg-surface, #18181b)',
-    color: 'var(--text-primary, #f8fafc)',
-    fontSize: '0.85rem',
+    padding: '8px 16px',
+    borderRadius: '12px',
+    backgroundColor: 'var(--bg-surface)',
+    color: 'var(--text-primary)',
+    fontSize: '0.84rem',
     fontWeight: 600,
-    border: '1px solid var(--border-color, #3f3f46)',
+    border: '1px solid var(--neu-rim)',
+    boxShadow: 'var(--neu-flat-sm)',
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
@@ -1602,10 +1849,46 @@ export default function ProductListBuilder({
               <span>Saved Lists</span>
             </button>
 
+            <a
+              href="/orders"
+              style={{
+                ...buttonActionStyle,
+                backgroundColor: 'rgba(16, 124, 65, 0.15)',
+                color: '#34d399',
+                borderColor: 'rgba(16, 124, 65, 0.4)',
+                textDecoration: 'none'
+              }}
+              title="Open Separate Excel Orders Record System"
+            >
+              <FileSpreadsheet style={{ width: '16px', height: '16px', color: '#34d399' }} />
+              <span>Excel Records</span>
+            </a>
+
+            <a
+              href="/checklist"
+              style={{
+                ...buttonActionStyle,
+                backgroundColor: 'rgba(79, 70, 229, 0.15)',
+                color: '#818cf8',
+                borderColor: 'rgba(79, 70, 229, 0.4)',
+                textDecoration: 'none'
+              }}
+              title="Open Standalone Sourcing & Order To-Do Checklist"
+            >
+              <CheckSquare style={{ width: '16px', height: '16px', color: '#818cf8' }} />
+              <span>To-Do Checklist</span>
+            </a>
+
             <button
-              onClick={handleSaveToServer}
+              onClick={handleOpenSaveModal}
               disabled={savingToServer}
-              style={buttonActionStyle}
+              style={{
+                ...buttonActionStyle,
+                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                borderColor: 'rgba(16, 185, 129, 0.4)',
+                color: '#34d399'
+              }}
+              title="Save List with options to keep working or start fresh"
             >
               <Save style={{ width: '16px', height: '16px', color: '#34d399' }} />
               <span>{savingToServer ? 'Saving...' : 'Save List'}</span>
@@ -1663,9 +1946,24 @@ export default function ProductListBuilder({
             <button
               onClick={handleExportCsv}
               style={buttonActionStyle}
+              title="Download simple CSV file"
             >
               <Download style={{ width: '16px', height: '16px', color: '#fbbf24' }} />
               <span>CSV</span>
+            </button>
+
+            <button
+              onClick={handleExportExcel}
+              style={{
+                ...buttonActionStyle,
+                backgroundColor: 'rgba(16, 124, 65, 0.15)',
+                border: '1px solid rgba(16, 124, 65, 0.4)',
+                color: '#4ade80'
+              }}
+              title="Download full formatted Excel Workbook (.xlsx)"
+            >
+              <FileSpreadsheet style={{ width: '16px', height: '16px', color: '#4ade80' }} />
+              <span>Excel (.xlsx)</span>
             </button>
 
             {/* PDF Mode Selector & Download Button Combo */}
@@ -1964,6 +2262,65 @@ export default function ProductListBuilder({
             </div>
           </div>
         )}
+
+        {/* Separate To-Do Checklist Quick Access Banner */}
+        <div
+          style={{
+            marginTop: '1.25rem',
+            padding: '12px 16px',
+            borderRadius: '12px',
+            backgroundColor: 'rgba(79, 70, 229, 0.08)',
+            border: '1px solid rgba(79, 70, 229, 0.28)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              backgroundColor: 'rgba(79, 70, 229, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#818cf8'
+            }}>
+              <CheckSquare style={{ width: '18px', height: '18px' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary, #ffffff)' }}>
+                Sourcing & Order To-Do Checklist (Separate Feature)
+              </div>
+              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted, #a1a1aa)' }}>
+                Track China supplier verification, payments, China warehouse arrival, air/sea cargo transit & final delivery in the dedicated Checklist module.
+              </div>
+            </div>
+          </div>
+
+          <a
+            href="/checklist"
+            style={{
+              padding: '6px 14px',
+              borderRadius: '8px',
+              background: 'linear-gradient(135deg, #4f46e5, #4338ca)',
+              color: '#ffffff',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              textDecoration: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 6px rgba(79, 70, 229, 0.3)'
+            }}
+          >
+            <span>Open Checklist Feature</span>
+            <ExternalLink style={{ width: '12px', height: '12px' }} />
+          </a>
+        </div>
 
         {/* ------------------------------------------------------------- */}
         {/* ADD PRODUCT FORM (SEQUENTIAL ENTRY) */}
@@ -2486,11 +2843,61 @@ export default function ProductListBuilder({
         {/* CURRENT PRODUCT LIST ITEMS TABLE / CARDS VIEW */}
         {/* ------------------------------------------------------------- */}
         <div style={{ marginTop: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary, #ffffff)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Layers style={{ width: '20px', height: '20px', color: '#f87171' }} />
-              Products in List ({items.length})
-            </h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary, #ffffff)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Layers style={{ width: '20px', height: '20px', color: '#f87171' }} />
+                Products in List ({items.length})
+              </h3>
+
+              {items.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '10px',
+                    backgroundColor: checkedItemsCount === items.length && items.length > 0 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(161, 161, 170, 0.12)',
+                    color: checkedItemsCount === items.length && items.length > 0 ? '#4ade80' : '#a1a1aa',
+                    border: '1px solid ' + (checkedItemsCount === items.length && items.length > 0 ? 'rgba(34, 197, 94, 0.4)' : 'rgba(161, 161, 170, 0.25)')
+                  }}>
+                    Checklist: {checkedItemsCount}/{items.length} Sourced
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCheckAllItems}
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      backgroundColor: 'rgba(34, 197, 94, 0.12)',
+                      border: '1px solid rgba(34, 197, 94, 0.3)',
+                      color: '#4ade80',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Check All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleUncheckAllItems}
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      backgroundColor: 'rgba(161, 161, 170, 0.1)',
+                      border: '1px solid rgba(161, 161, 170, 0.25)',
+                      color: '#a1a1aa',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Uncheck All
+                  </button>
+                </div>
+              )}
+            </div>
 
             {items.length > 0 && (
               <button
@@ -2539,8 +2946,31 @@ export default function ProductListBuilder({
                       gap: '1rem'
                     }}
                   >
-                    {/* Item Serial, Image & Details */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: '240px', flex: 1 }}>
+                    {/* Item Serial, Checklist Box, Image & Details */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '240px', flex: 1 }}>
+                      {/* Checkbox button */}
+                      <button
+                        type="button"
+                        onClick={() => handleToggleItemChecked(item.id)}
+                        title={item.is_checked ? 'Mark as pending' : 'Mark as sourced / verified'}
+                        style={{
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '6px',
+                          border: item.is_checked ? '2px solid #22c55e' : '2px solid #52525b',
+                          backgroundColor: item.is_checked ? '#16a34a' : 'transparent',
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        {item.is_checked ? <Check style={{ width: '14px', height: '14px' }} strokeWidth={3} /> : null}
+                      </button>
+
                       <span style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: 'var(--bg-card, #18181b)', border: '1px solid var(--border-color, #3f3f46)', color: 'var(--text-primary, #f8fafc)', fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         {index + 1}
                       </span>
@@ -2630,9 +3060,28 @@ export default function ProductListBuilder({
                       {/* Info */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary, #ffffff)', margin: 0 }}>
+                          <h4 style={{
+                            fontSize: '0.95rem',
+                            fontWeight: 700,
+                            color: item.is_checked ? '#86efac' : 'var(--text-primary, #ffffff)',
+                            textDecoration: item.is_checked ? 'line-through' : 'none',
+                            margin: 0
+                          }}>
                             {item.title}
                           </h4>
+                          {item.is_checked && (
+                            <span style={{
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              fontSize: '0.65rem',
+                              fontWeight: 800,
+                              backgroundColor: 'rgba(34, 197, 94, 0.18)',
+                              color: '#4ade80',
+                              border: '1px solid rgba(34, 197, 94, 0.4)'
+                            }}>
+                              ✓ Sourced
+                            </span>
+                          )}
                           {item.platform && (
                             <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 800, backgroundColor: 'rgba(220, 38, 38, 0.2)', color: '#f87171', border: '1px solid rgba(220, 38, 38, 0.3)', textTransform: 'uppercase' }}>
                               {item.platform}
@@ -2949,14 +3398,41 @@ export default function ProductListBuilder({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid var(--border-color, #27272a)', marginBottom: '1rem' }}>
               <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary, #ffffff)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <FolderOpen style={{ width: '20px', height: '20px', color: '#60a5fa' }} />
-                Saved Product Lists
+                Orders Record
               </h3>
-              <button
-                onClick={() => setShowSavedModal(false)}
-                style={{ padding: '6px', backgroundColor: 'var(--bg-surface, #27272a)', border: 'none', borderRadius: '8px', color: 'var(--text-muted, #a1a1aa)', cursor: 'pointer' }}
-              >
-                <X style={{ width: '18px', height: '18px' }} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {savedLists.length > 0 && (
+                  <button
+                    onClick={() => {
+                      exportAllOrdersToExcel(savedLists);
+                      showToast(`📗 Master Excel Sheet downloaded (${savedLists.length} orders)!`);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 12px',
+                      backgroundColor: '#107c41',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: '#ffffff',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                    title="Export All Saved Orders to Excel (.xlsx)"
+                  >
+                    <FileSpreadsheet style={{ width: '15px', height: '15px' }} />
+                    <span>Export All Excel</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowSavedModal(false)}
+                  style={{ padding: '6px', backgroundColor: 'var(--bg-surface, #27272a)', border: 'none', borderRadius: '8px', color: 'var(--text-muted, #a1a1aa)', cursor: 'pointer' }}
+                >
+                  <X style={{ width: '18px', height: '18px' }} />
+                </button>
+              </div>
             </div>
 
             {loadingSaved ? (
@@ -3002,6 +3478,22 @@ export default function ProductListBuilder({
                         )}
                         <div style={{ fontSize: '0.75rem', color: '#fbbf24' }}>{list.total_weight_kg} kg</div>
                       </div>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          try {
+                            exportSingleOrderToExcel(list);
+                            showToast(`📗 Excel downloaded for "${list.name}"`);
+                          } catch (err: any) {
+                            showToast('❌ Export failed');
+                          }
+                        }}
+                        style={{ padding: '6px', backgroundColor: 'rgba(16, 124, 65, 0.2)', border: '1px solid rgba(16, 124, 65, 0.4)', borderRadius: '6px', color: '#4ade80', cursor: 'pointer' }}
+                        title="Download order as Excel (.xlsx)"
+                      >
+                        <FileSpreadsheet style={{ width: '16px', height: '16px' }} />
+                      </button>
 
                       <button
                         onClick={(e) => handleDeleteSavedList(list.id, e)}
@@ -3373,6 +3865,206 @@ export default function ProductListBuilder({
                   <span>Open in WhatsApp</span>
                 </button>
               </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* 💾 SAVE SOURCING LIST & ORDER MODAL */}
+      {/* ------------------------------------------------------------- */}
+      {showSaveListModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ backgroundColor: 'var(--bg-card, #18181b)', border: '1px solid var(--border-color, #27272a)', borderRadius: '16px', maxWidth: '560px', width: '100%', padding: '1.5rem', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }}>
+            
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid var(--border-color, #27272a)', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ padding: '8px', borderRadius: '10px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                  <Save style={{ width: '22px', height: '22px' }} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary, #ffffff)', margin: 0 }}>
+                    Save Sourcing List & Order
+                  </h3>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted, #a1a1aa)', margin: '2px 0 0 0' }}>
+                    Choose whether to keep working on this list or start a fresh new order
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSaveListModal(false)}
+                style={{ padding: '6px', backgroundColor: 'var(--bg-surface, #27272a)', border: 'none', borderRadius: '8px', color: 'var(--text-muted, #a1a1aa)', cursor: 'pointer' }}
+              >
+                <X style={{ width: '18px', height: '18px' }} />
+              </button>
+            </div>
+
+            {/* Summary Card */}
+            <div style={{
+              backgroundColor: 'var(--bg-surface, #09090b)',
+              padding: '12px 14px',
+              borderRadius: '12px',
+              border: '1px solid var(--border-color, #27272a)',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: '8px',
+              marginBottom: '1.25rem'
+            }}>
+              <div>
+                <div style={{ fontSize: '0.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Total Items</div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px' }}>
+                  {items.length} items ({totalQuantity} pcs)
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.68rem', color: '#fbbf24', textTransform: 'uppercase', fontWeight: 700 }}>Gross Weight</div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#fbbf24', marginTop: '2px' }}>
+                  {totalWeightKg.toFixed(3)} kg
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.68rem', color: '#34d399', textTransform: 'uppercase', fontWeight: 700 }}>Grand Total</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#34d399', marginTop: '2px' }}>
+                  ৳{grandTotalBdt.toLocaleString()}
+                </div>
+              </div>
+            </div>
+
+            {/* Form Fields */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div>
+                <label style={labelStyle}>
+                  Order / List Name <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={saveListNameInput}
+                  onChange={(e) => setSaveListNameInput(e.target.value)}
+                  placeholder="e.g. Alibaba Electronics Order #4"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={labelStyle}>Brand / Client Name</label>
+                  <input
+                    type="text"
+                    value={saveBrandNameInput}
+                    onChange={(e) => setSaveBrandNameInput(e.target.value)}
+                    placeholder="e.g. OMNI SOURCING"
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Order Date</label>
+                  <input
+                    type="date"
+                    value={saveDateInput}
+                    onChange={(e) => setSaveDateInput(e.target.value)}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Notes / Special Instructions (Optional)</label>
+                <input
+                  type="text"
+                  value={saveNotesInput}
+                  onChange={(e) => setSaveNotesInput(e.target.value)}
+                  placeholder="e.g. Sea cargo, urgent shipment, check battery certifications..."
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+            {/* Dual Save Action Buttons */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                {/* Save & Keep Working */}
+                <button
+                  type="button"
+                  disabled={savingToServer}
+                  onClick={() => handleExecuteSave(false)}
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: '10px',
+                    backgroundColor: '#107c41',
+                    color: '#ffffff',
+                    border: '1px solid #16a34a',
+                    fontSize: '0.85rem',
+                    fontWeight: 800,
+                    cursor: savingToServer ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '3px',
+                    boxShadow: '0 4px 12px rgba(16, 124, 65, 0.3)'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Save style={{ width: '16px', height: '16px' }} />
+                    <span>{savingToServer ? 'Saving...' : 'Save & Keep Working'}</span>
+                  </div>
+                  <span style={{ fontSize: '0.68rem', color: '#bbf7d0', fontWeight: 500 }}>
+                    Does NOT clear items from screen
+                  </span>
+                </button>
+
+                {/* Save & Start New List */}
+                <button
+                  type="button"
+                  disabled={savingToServer}
+                  onClick={() => handleExecuteSave(true)}
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: '10px',
+                    background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                    color: '#ffffff',
+                    border: '1px solid #3b82f6',
+                    fontSize: '0.85rem',
+                    fontWeight: 800,
+                    cursor: savingToServer ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '3px',
+                    boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Plus style={{ width: '16px', height: '16px' }} />
+                    <span>{savingToServer ? 'Saving...' : 'Save & Start New List'}</span>
+                  </div>
+                  <span style={{ fontSize: '0.68rem', color: '#bfdbfe', fontWeight: 500 }}>
+                    Saves & refreshes to blank builder
+                  </span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowSaveListModal(false)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text-muted, #a1a1aa)',
+                  border: 'none',
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                  marginTop: '4px'
+                }}
+              >
+                Cancel
+              </button>
             </div>
 
           </div>

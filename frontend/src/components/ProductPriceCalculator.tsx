@@ -2,17 +2,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  Sparkles, 
   Copy, 
   Download, 
   ListPlus, 
   RotateCcw, 
   Scale, 
-  Plane, 
-  Ship, 
-  Layers
+  Layers,
+  Coins,
+  Receipt
 } from 'lucide-react';
-import { CategorizedProduct, PRODUCT_CATEGORIES } from '@/types/catalog';
+import { CategorizedProduct } from '@/types/catalog';
 import { formatMoney } from '@/lib/formatters';
 import { exportQuotationPdf } from '@/lib/pdfExport';
 
@@ -31,21 +30,26 @@ export default function ProductPriceCalculator({
   globalFreightRate = 1.2,
   globalFreightUnit = 'per_gm',
 }: ProductPriceCalculatorProps) {
-  // Core Sourcing Inputs (Default: empty except RMB rate 20 and weight rate 1.2/gm)
-  const [title, setTitle] = useState<string>('');
-  const [category, setCategory] = useState<string>('');
+  // Sourcing Price Inputs
   const [currency, setCurrency] = useState<'RMB' | 'USD'>('RMB');
   const [sourcePrice, setSourcePrice] = useState<string>('');
   const [exchangeRate, setExchangeRate] = useState<string>(globalRmbRate ? String(globalRmbRate) : '20');
   const [quantity, setQuantity] = useState<string>('');
   
-  // Weight & Shipping
+  // Weight & Freight Inputs
   const [weightVal, setWeightVal] = useState<string>('');
   const [weightUnit, setWeightUnit] = useState<'gm' | 'kg'>('gm');
   const [freightRate, setFreightRate] = useState<string>(globalFreightRate ? String(globalFreightRate) : '1.2');
   const [freightUnit, setFreightUnit] = useState<'per_gm' | 'per_kg'>('per_gm');
-  const [shippingMethod, setShippingMethod] = useState<'air' | 'sea' | 'custom'>('air');
+
+  // Other Costing Input
+  const [otherCost, setOtherCost] = useState<string>('');
+  const [otherCostType, setOtherCostType] = useState<'per_unit' | 'total'>('per_unit');
   
+  // Product context preservation (if sent from catalog)
+  const [productTitle, setProductTitle] = useState<string>('');
+  const [productCategory, setProductCategory] = useState<string>('');
+
   // UI states
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState<boolean>(false);
@@ -53,14 +57,14 @@ export default function ProductPriceCalculator({
   // Sync initial product if passed from Category catalog
   useEffect(() => {
     if (initialProduct) {
-      setTitle(initialProduct.title);
-      setCategory(initialProduct.category || 'electronics');
+      setProductTitle(initialProduct.title || '');
+      setProductCategory(initialProduct.category || '');
       setCurrency(initialProduct.currency || 'RMB');
       setSourcePrice(String(initialProduct.source_price));
       setWeightVal(String(initialProduct.weight_val));
       setWeightUnit(initialProduct.weight_unit);
       setQuantity(String(initialProduct.moq || 10));
-      showToast(`⚡ Loaded "${initialProduct.title.slice(0, 22)}..." into calculator`);
+      showToast(`⚡ Loaded product price (${initialProduct.source_price} ${initialProduct.currency || 'RMB'}) into calculator`);
     }
   }, [initialProduct]);
 
@@ -71,18 +75,6 @@ export default function ProductPriceCalculator({
       setExchangeRate('121.50');
     } else {
       setExchangeRate(String(globalRmbRate || '20.00'));
-    }
-  };
-
-  // Preset shipping switch
-  const handleShippingPreset = (method: 'air' | 'sea' | 'custom') => {
-    setShippingMethod(method);
-    if (method === 'air') {
-      setFreightRate('1.2');
-      setFreightUnit('per_gm');
-    } else if (method === 'sea') {
-      setFreightRate('250');
-      setFreightUnit('per_kg');
     }
   };
 
@@ -110,29 +102,43 @@ export default function ProductPriceCalculator({
   const unitFreightBdt = unitWeightKg * fRatePerKg;
   const totalFreightBdt = (qtyNum > 0 ? qtyNum : (rawWeight > 0 ? 1 : 0)) * unitFreightBdt;
 
-  // 3. Combined Total Price in BDT
-  const unitTotalPriceBdt = unitItemPriceBdt + unitFreightBdt;
-  const totalBatchPriceBdt = (qtyNum > 0 ? qtyNum : (priceNum > 0 || rawWeight > 0 ? 1 : 0)) * unitTotalPriceBdt;
+  // 3. Other Costing in BDT (packaging, duty, local delivery, etc.)
+  const otherCostNum = parseFloat(otherCost) || 0;
+  const unitOtherCostBdt = otherCostType === 'total' && qtyNum > 0
+    ? otherCostNum / qtyNum
+    : otherCostNum;
+  const totalOtherCostBdt = otherCostType === 'total'
+    ? otherCostNum
+    : otherCostNum * (qtyNum > 0 ? qtyNum : (otherCostNum > 0 ? 1 : 0));
+
+  // 4. Product Price Without Weight in BDT (Product Base + other non-weight costs)
+  const unitProductWithoutWeightBdt = unitItemPriceBdt + unitOtherCostBdt;
+  const totalProductWithoutWeightBdt = totalItemPriceBdt + totalOtherCostBdt;
+
+  // 5. Combined Total Price in BDT
+  const unitTotalPriceBdt = unitProductWithoutWeightBdt + unitFreightBdt;
+  const totalBatchPriceBdt = (qtyNum > 0 ? qtyNum : (priceNum > 0 || rawWeight > 0 || otherCostNum > 0 ? 1 : 0)) * unitTotalPriceBdt;
 
   // Copy Quotation to Clipboard
   const handleCopyQuotation = () => {
     if (unitTotalPriceBdt <= 0) {
-      showToast('⚠️ Please enter purchase price or weight first');
+      showToast('⚠️ Please enter purchase price, weight, or other costing first');
       return;
     }
 
     const text = [
       '========================================',
-      `📦 ${title.toUpperCase() || 'PRODUCT PRICE CALCULATION'}`,
+      `📦 ${productTitle.toUpperCase() || 'PRICE CALCULATION'}`,
       '========================================',
       `• Purchase Price: ${currency === 'RMB' ? '¥' : '$'}${priceNum.toFixed(2)} (Exchange Rate: ৳${rateNum.toFixed(2)}/${currency})`,
-      `• Base Product Cost: ৳${formatMoney(Math.round(unitItemPriceBdt))} BDT`,
-      `• Unit Weight: ${rawWeight} ${weightUnit} (Freight Rate: ৳${fRateNum} ${freightUnit === 'per_gm' ? '/ gm' : '/ kg'})`,
-      `• Weight Cargo Charge: ৳${formatMoney(Math.round(unitFreightBdt))} BDT`,
+      `• Product Price (Without Weight): ৳${formatMoney(Math.round(unitProductWithoutWeightBdt))} BDT / unit`,
+      `• Weight Price: ৳${formatMoney(Math.round(unitFreightBdt))} BDT / unit`,
       '----------------------------------------',
-      `🎯 TOTAL CALCULATED UNIT PRICE: ৳${formatMoney(Math.round(unitTotalPriceBdt))} BDT / unit`,
+      `🎯 TOTAL PRICE: ৳${formatMoney(Math.round(unitTotalPriceBdt))} BDT / unit`,
       ...(qtyNum > 0 ? [
         `• Order Quantity: ${qtyNum} pcs`,
+        `💰 Total Product (Without Weight): ৳${formatMoney(Math.round(totalProductWithoutWeightBdt))} BDT`,
+        `💰 Total Weight Price: ৳${formatMoney(Math.round(totalFreightBdt))} BDT`,
         `💰 TOTAL BATCH PRICE: ৳${formatMoney(Math.round(totalBatchPriceBdt))} BDT`,
       ] : []),
       '========================================',
@@ -146,7 +152,7 @@ export default function ProductPriceCalculator({
   // Export PDF Quotation
   const handleExportPdf = async () => {
     if (unitTotalPriceBdt <= 0) {
-      showToast('⚠️ Please enter purchase price or weight first');
+      showToast('⚠️ Please enter purchase price, weight, or other costing first');
       return;
     }
 
@@ -154,7 +160,7 @@ export default function ProductPriceCalculator({
     try {
       await exportQuotationPdf(
         {
-          productTitle: title || 'Custom Sourced Product',
+          productTitle: productTitle || 'Custom Calculated Product',
           rmbPrice: String(priceNum),
           rmbRate: String(rateNum),
           quantity: qtyNum || 1,
@@ -166,13 +172,13 @@ export default function ProductPriceCalculator({
           domesticShipping: '0',
           agentFeePct: '0',
           dutyPct: '0',
-          otherCosts: '0',
+          otherCosts: String(otherCostNum),
           itemPriceBdt: totalItemPriceBdt,
           domesticShippingBdt: 0,
           agentFeeBdt: 0,
           freightBdt: totalFreightBdt,
           dutyVatBdt: 0,
-          otherCostsBdt: 0,
+          otherCostsBdt: totalOtherCostBdt,
           totalLandedCost: totalBatchPriceBdt,
           perUnitLandedCost: Math.round(unitTotalPriceBdt),
           targetPrice: 0,
@@ -181,7 +187,7 @@ export default function ProductPriceCalculator({
           grossMargin: 0,
           roi: 0,
           breakEvenUnits: qtyNum || 1,
-          shippingMethod: shippingMethod === 'sea' ? 'sea' : 'air',
+          shippingMethod: 'air',
           platform: 'Custom Calculation',
         },
         formatMoney
@@ -198,21 +204,22 @@ export default function ProductPriceCalculator({
   // Add to Product List Builder
   const handleAddToList = () => {
     if (unitTotalPriceBdt <= 0) {
-      showToast('⚠️ Please enter purchase price or weight first');
+      showToast('⚠️ Please enter purchase price, weight, or other costing first');
       return;
     }
 
+    const otherNote = otherCostNum > 0 ? ` + ৳${Math.round(unitOtherCostBdt)} other` : '';
     const calculatedItem = {
       id: 'item-' + Date.now(),
-      title: title.trim() || 'Calculated Sourced Item',
-      details: category,
+      title: productTitle.trim() || 'Calculated Sourced Item',
+      details: productCategory || `${rawWeight}${weightUnit} @ ৳${freightRate}/${freightUnit === 'per_gm' ? 'gm' : 'kg'}${otherNote}`,
       price: priceNum,
       currency,
       price_bdt: Math.round(unitItemPriceBdt),
       weight_kg: unitWeightKg,
       quantity: qtyNum > 0 ? qtyNum : 1,
       platform: 'Custom Calculation',
-      notes: title ? `Calculated item (${priceNum} ${currency})` : '',
+      notes: `${priceNum} ${currency} @ rate ৳${rateNum}${otherCostNum > 0 ? ` | Other: ৳${Math.round(unitOtherCostBdt)}` : ''}`,
       weight_price_bdt: Math.round(unitFreightBdt),
       line_weight_price_bdt: Math.round(totalFreightBdt),
       combined_unit_price_bdt: Math.round(unitTotalPriceBdt),
@@ -221,14 +228,14 @@ export default function ProductPriceCalculator({
 
     if (onAddToList) {
       onAddToList(calculatedItem);
-      showToast(`➕ Added "${title.slice(0, 20) || 'Item'}..." to Product List Builder!`);
+      showToast('➕ Added calculated item to Product List Builder!');
     }
   };
 
   // Reset to clean defaults
   const handleReset = () => {
-    setTitle('');
-    setCategory('');
+    setProductTitle('');
+    setProductCategory('');
     setCurrency('RMB');
     setSourcePrice('');
     setExchangeRate(globalRmbRate ? String(globalRmbRate) : '20');
@@ -237,12 +244,13 @@ export default function ProductPriceCalculator({
     setWeightUnit('gm');
     setFreightRate(globalFreightRate ? String(globalFreightRate) : '1.2');
     setFreightUnit('per_gm');
-    setShippingMethod('air');
+    setOtherCost('');
+    setOtherCostType('per_unit');
     showToast('🔄 Calculator reset');
   };
 
   return (
-    <div style={{ width: '100%', maxWidth: '1280px', margin: '0 auto', padding: '0 1rem' }}>
+    <div style={{ width: '100%', maxWidth: '720px', margin: '0 auto', padding: '0 1rem' }}>
       {/* Toast Notification */}
       {toastMsg && (
         <div style={{
@@ -265,269 +273,212 @@ export default function ProductPriceCalculator({
         </div>
       )}
 
-      {/* Minimalist Header */}
+      {/* Main Streamlined Calculator Card */}
       <div style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '1rem',
-        marginBottom: '1.75rem',
-        paddingBottom: '1rem',
-        borderBottom: '1px solid var(--border-color)',
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border-color)',
+        borderRadius: '20px',
+        padding: '1.75rem',
+        boxShadow: 'var(--shadow-md)',
       }}>
-        <div>
-          <h2 style={{
-            fontSize: '1.35rem',
-            fontWeight: 700,
-            color: 'var(--text-primary)',
-            letterSpacing: '-0.02em',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            margin: 0,
-          }}>
-            <span style={{ color: 'var(--omni-red)' }}>🧮</span> Product Price Calculator
-          </h2>
-          <p style={{
-            fontSize: '0.84rem',
-            color: 'var(--text-muted)',
-            margin: '4px 0 0 0',
-          }}>
-            Simple, instant calculation of item price, cargo weight, and total BDT cost.
-          </p>
+        {/* Header */}
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '1rem',
+          marginBottom: '1.5rem',
+          paddingBottom: '1rem',
+          borderBottom: '1px solid var(--border-color)',
+        }}>
+          <div>
+            <h2 style={{
+              fontSize: '1.25rem',
+              fontWeight: 700,
+              color: 'var(--text-primary)',
+              letterSpacing: '-0.02em',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              margin: 0,
+            }}>
+              <span style={{ color: 'var(--omni-red)' }}>🧮</span> Product Price Calculator
+            </h2>
+            <p style={{
+              fontSize: '0.8rem',
+              color: 'var(--text-muted)',
+              margin: '3px 0 0 0',
+            }}>
+              Instant calculation of item price, cargo weight, and total landed BDT cost.
+            </p>
+          </div>
+
+          <button
+            onClick={handleReset}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: '8px',
+              background: 'transparent',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-muted)',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+            title="Reset calculator inputs"
+          >
+            <RotateCcw size={13} />
+            Reset
+          </button>
         </div>
 
-        <button
-          onClick={handleReset}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '7px 14px',
-            borderRadius: '8px',
-            background: 'transparent',
-            border: '1px solid var(--border-color)',
-            color: 'var(--text-muted)',
-            fontSize: '0.8rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = 'var(--text-primary)';
-            e.currentTarget.style.borderColor = 'var(--border-highlight)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = 'var(--text-muted)';
-            e.currentTarget.style.borderColor = 'var(--border-color)';
-          }}
-        >
-          <RotateCcw size={13} />
-          Reset
-        </button>
-      </div>
-
-      {/* 2-Column Minimalist Layout: Left Inputs | Right Price Summary */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
-        gap: '1.75rem',
-        alignItems: 'start',
-      }}>
-        {/* ================= LEFT COLUMN: ESSENTIALS ================= */}
+        {/* ================= INPUTS SECTION ================= */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           
-          {/* Card 1: Core Product & Sourcing */}
-          <div style={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '16px',
-            padding: '1.5rem',
-            boxShadow: 'var(--shadow-sm)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.25rem' }}>
-              <Layers size={16} style={{ color: 'var(--omni-red)' }} />
-              <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                1. Product & Purchase Cost
-              </h3>
+          {/* Section 1: Purchase Price & Exchange Rate */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '0.75rem' }}>
+              <Coins size={15} style={{ color: 'var(--omni-red)' }} />
+              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Purchase Price & Currency
+              </span>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {/* Product Title & Category */}
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                    Product Title
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+              {/* Purchase Price with Currency Switcher */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                    Purchase Price
                   </label>
-                  <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="e.g. Wireless Smart Watch"
-                    style={{
-                      width: '100%',
-                      padding: '9px 12px',
-                      borderRadius: '8px',
-                      background: 'var(--bg-surface)',
-                      border: '1px solid var(--border-color)',
-                      color: 'var(--text-primary)',
-                      fontSize: '0.88rem',
-                      outline: 'none',
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                    Category
-                  </label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '9px 10px',
-                      borderRadius: '8px',
-                      background: 'var(--bg-surface)',
-                      border: '1px solid var(--border-color)',
-                      color: category ? 'var(--text-primary)' : 'var(--text-muted)',
-                      fontSize: '0.88rem',
-                      outline: 'none',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <option value="" disabled>Select one</option>
-                    {PRODUCT_CATEGORIES.map((c) => (
-                      <option key={c.id} value={c.id} style={{ color: 'var(--text-primary)' }}>{c.icon} {c.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Purchase Price with Currency Segmented Switch */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '10px' }}>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                      Purchase Price
-                    </label>
-                    {/* Segmented Pill Currency Switcher */}
-                    <div style={{
-                      display: 'flex',
-                      background: 'var(--bg-surface)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '6px',
-                      padding: '2px',
-                    }}>
-                      <button
-                        type="button"
-                        onClick={() => handleCurrencyChange('RMB')}
-                        style={{
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          background: currency === 'RMB' ? 'var(--omni-red)' : 'transparent',
-                          color: currency === 'RMB' ? '#ffffff' : 'var(--text-muted)',
-                          border: 'none',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        ¥ RMB
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleCurrencyChange('USD')}
-                        style={{
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          background: currency === 'USD' ? 'var(--omni-red)' : 'transparent',
-                          color: currency === 'USD' ? '#ffffff' : 'var(--text-muted)',
-                          border: 'none',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        $ USD
-                      </button>
-                    </div>
-                  </div>
-
-                  <div style={{ position: 'relative' }}>
-                    <span style={{
-                      position: 'absolute',
-                      left: '12px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      fontSize: '0.9rem',
-                      fontWeight: 700,
-                      color: 'var(--text-muted)',
-                    }}>
-                      {currency === 'RMB' ? '¥' : '$'}
-                    </span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.00"
-                      value={sourcePrice}
-                      onChange={(e) => setSourcePrice(e.target.value)}
+                  {/* Currency Switcher */}
+                  <div style={{
+                    display: 'flex',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    padding: '2px',
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => handleCurrencyChange('RMB')}
                       style={{
-                        width: '100%',
-                        padding: '9px 12px 9px 28px',
-                        borderRadius: '8px',
-                        background: 'var(--bg-surface)',
-                        border: '1px solid var(--border-color)',
-                        color: 'var(--text-primary)',
-                        fontSize: '0.95rem',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontSize: '0.72rem',
                         fontWeight: 700,
-                        outline: 'none',
+                        background: currency === 'RMB' ? 'var(--omni-red)' : 'transparent',
+                        color: currency === 'RMB' ? '#ffffff' : 'var(--text-muted)',
+                        border: 'none',
+                        cursor: 'pointer',
                       }}
-                    />
+                    >
+                      ¥ RMB
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCurrencyChange('USD')}
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        background: currency === 'USD' ? 'var(--omni-red)' : 'transparent',
+                        color: currency === 'USD' ? '#ffffff' : 'var(--text-muted)',
+                        border: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      $ USD
+                    </button>
                   </div>
                 </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                    Exchange Rate (৳/{currency})
-                  </label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{
+                    position: 'absolute',
+                    left: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    fontSize: '0.9rem',
+                    fontWeight: 700,
+                    color: 'var(--text-muted)',
+                  }}>
+                    {currency === 'RMB' ? '¥' : '$'}
+                  </span>
                   <input
                     type="number"
-                    step="0.1"
+                    step="0.01"
                     min="0"
-                    value={exchangeRate}
-                    onChange={(e) => setExchangeRate(e.target.value)}
+                    placeholder="0.00"
+                    value={sourcePrice}
+                    onChange={(e) => setSourcePrice(e.target.value)}
                     style={{
                       width: '100%',
-                      padding: '9px 12px',
+                      padding: '9px 12px 9px 28px',
                       borderRadius: '8px',
                       background: 'var(--bg-surface)',
                       border: '1px solid var(--border-color)',
                       color: 'var(--text-primary)',
                       fontSize: '0.95rem',
-                      fontWeight: 600,
+                      fontWeight: 700,
                       outline: 'none',
                     }}
                   />
                 </div>
               </div>
 
+              {/* Exchange Rate */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                  Exchange Rate (৳/{currency})
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={exchangeRate}
+                  onChange={(e) => setExchangeRate(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.95rem',
+                    fontWeight: 600,
+                    outline: 'none',
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Order Quantity & Other Costing */}
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
               {/* Order Quantity */}
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
                   <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                     Order Quantity (Units)
                   </label>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    Total Base Cost: <strong style={{ color: 'var(--text-primary)' }}>৳{formatMoney(Math.round(totalItemPriceBdt))}</strong>
-                  </span>
+                  {qtyNum > 0 && priceNum > 0 && (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      Base: <strong style={{ color: 'var(--text-primary)' }}>৳{formatMoney(Math.round(totalItemPriceBdt))}</strong>
+                    </span>
+                  )}
                 </div>
                 <input
                   type="number"
                   min="1"
-                  placeholder="e.g. 10"
+                  placeholder="e.g. 10 (leave empty for single unit)"
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
                   style={{
@@ -543,34 +494,115 @@ export default function ProductPriceCalculator({
                   }}
                 />
               </div>
+
+              {/* Other Costing Box */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                    Other Costing (৳)
+                  </label>
+                  {/* Per Unit vs Total Switcher */}
+                  <div style={{
+                    display: 'flex',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    padding: '2px',
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => setOtherCostType('per_unit')}
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        background: otherCostType === 'per_unit' ? 'var(--omni-red)' : 'transparent',
+                        color: otherCostType === 'per_unit' ? '#ffffff' : 'var(--text-muted)',
+                        border: 'none',
+                        cursor: 'pointer',
+                      }}
+                      title="Other cost per unit"
+                    >
+                      / Unit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOtherCostType('total')}
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        background: otherCostType === 'total' ? 'var(--omni-red)' : 'transparent',
+                        color: otherCostType === 'total' ? '#ffffff' : 'var(--text-muted)',
+                        border: 'none',
+                        cursor: 'pointer',
+                      }}
+                      title="Total other cost for entire batch"
+                    >
+                      Total
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ position: 'relative' }}>
+                  <span style={{
+                    position: 'absolute',
+                    left: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    fontSize: '0.9rem',
+                    fontWeight: 700,
+                    color: 'var(--text-muted)',
+                  }}>
+                    ৳
+                  </span>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    placeholder="0.00 (packaging, duty, delivery)"
+                    value={otherCost}
+                    onChange={(e) => setOtherCost(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px 9px 28px',
+                      borderRadius: '8px',
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.92rem',
+                      fontWeight: 600,
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Card 2: Weight & International Cargo */}
-          <div style={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '16px',
-            padding: '1.5rem',
-            boxShadow: 'var(--shadow-sm)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.25rem' }}>
-              <Scale size={16} style={{ color: 'var(--omni-red)' }} />
-              <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                2. Weight & International Cargo
-              </h3>
+          {/* Section 3: Weight & Freight */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '0.75rem' }}>
+              <Scale size={15} style={{ color: 'var(--omni-red)' }} />
+              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Weight & Cargo Freight
+              </span>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {/* Weight with inline Unit Selector */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+              {/* Unit Weight with gm / kg Selector */}
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
                   <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                     Unit Weight
                   </label>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    Batch Total: <strong style={{ color: 'var(--text-primary)' }}>{totalWeightKg.toFixed(2)} kg</strong>
-                  </span>
+                  {qtyNum > 0 && (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      Total: <strong style={{ color: '#fbbf24' }}>{totalWeightKg.toFixed(2)} kg</strong>
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <input
@@ -603,9 +635,9 @@ export default function ProductPriceCalculator({
                       type="button"
                       onClick={() => setWeightUnit('gm')}
                       style={{
-                        padding: '0 12px',
+                        padding: '0 10px',
                         borderRadius: '6px',
-                        fontSize: '0.78rem',
+                        fontSize: '0.76rem',
                         fontWeight: 700,
                         background: weightUnit === 'gm' ? 'var(--omni-red)' : 'transparent',
                         color: weightUnit === 'gm' ? '#ffffff' : 'var(--text-muted)',
@@ -619,9 +651,9 @@ export default function ProductPriceCalculator({
                       type="button"
                       onClick={() => setWeightUnit('kg')}
                       style={{
-                        padding: '0 12px',
+                        padding: '0 10px',
                         borderRadius: '6px',
-                        fontSize: '0.78rem',
+                        fontSize: '0.76rem',
                         fontWeight: 700,
                         background: weightUnit === 'kg' ? 'var(--omni-red)' : 'transparent',
                         color: weightUnit === 'kg' ? '#ffffff' : 'var(--text-muted)',
@@ -635,86 +667,8 @@ export default function ProductPriceCalculator({
                 </div>
               </div>
 
-              {/* Shipping Method Pills */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                  Shipping Mode Preset
-                </label>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: '6px',
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => handleShippingPreset('air')}
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '8px 4px',
-                      borderRadius: '8px',
-                      background: shippingMethod === 'air' ? 'rgba(220, 38, 38, 0.12)' : 'var(--bg-surface)',
-                      border: shippingMethod === 'air' ? '1.5px solid var(--omni-red)' : '1px solid var(--border-color)',
-                      color: shippingMethod === 'air' ? 'var(--omni-red)' : 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <Plane size={15} />
-                    <span style={{ fontSize: '0.76rem', fontWeight: 700 }}>Air Cargo</span>
-                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>৳1.2 / gm</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleShippingPreset('sea')}
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '8px 4px',
-                      borderRadius: '8px',
-                      background: shippingMethod === 'sea' ? 'rgba(220, 38, 38, 0.12)' : 'var(--bg-surface)',
-                      border: shippingMethod === 'sea' ? '1.5px solid var(--omni-red)' : '1px solid var(--border-color)',
-                      color: shippingMethod === 'sea' ? 'var(--omni-red)' : 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <Ship size={15} />
-                    <span style={{ fontSize: '0.76rem', fontWeight: 700 }}>Sea Cargo</span>
-                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>৳250 / kg</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShippingMethod('custom')}
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '8px 4px',
-                      borderRadius: '8px',
-                      background: shippingMethod === 'custom' ? 'rgba(220, 38, 38, 0.12)' : 'var(--bg-surface)',
-                      border: shippingMethod === 'custom' ? '1.5px solid var(--omni-red)' : '1px solid var(--border-color)',
-                      color: shippingMethod === 'custom' ? 'var(--omni-red)' : 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <Scale size={15} />
-                    <span style={{ fontSize: '0.76rem', fontWeight: 700 }}>Custom</span>
-                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Manual Rate</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Freight Charge Rate with unit */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '8px' }}>
+              {/* Freight Rate & Unit Base */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '8px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                     Freight Rate (৳)
@@ -749,166 +703,166 @@ export default function ProductPriceCalculator({
                     onChange={(e) => setFreightUnit(e.target.value as any)}
                     style={{
                       width: '100%',
-                      padding: '9px 10px',
+                      padding: '9px 8px',
                       borderRadius: '8px',
                       background: 'var(--bg-surface)',
                       border: '1px solid var(--border-color)',
                       color: 'var(--text-primary)',
-                      fontSize: '0.88rem',
+                      fontSize: '0.85rem',
                       fontWeight: 600,
                       outline: 'none',
                       cursor: 'pointer',
                     }}
                   >
-                    <option value="per_gm">per gram (gm)</option>
-                    <option value="per_kg">per kilogram (kg)</option>
+                    <option value="per_gm">/ gm</option>
+                    <option value="per_kg">/ kg</option>
                   </select>
                 </div>
               </div>
-
-              {/* Line Freight total preview */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                fontSize: '0.8rem',
-                color: 'var(--text-secondary)',
-                padding: '8px 12px',
-                background: 'var(--bg-surface)',
-                borderRadius: '8px',
-                border: '1px solid var(--border-color)',
-              }}>
-                <span>Unit Weight Charge:</span>
-                <strong style={{ color: 'var(--omni-red)' }}>৳{formatMoney(Math.round(unitFreightBdt))} BDT</strong>
-              </div>
             </div>
           </div>
-        </div>
 
-        {/* ================= RIGHT COLUMN: CLEAN PRICE SUMMARY ================= */}
-        <div style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-color)',
-          borderRadius: '20px',
-          padding: '1.75rem',
-          boxShadow: 'var(--shadow-md)',
-          position: 'sticky',
-          top: '24px',
-        }}>
-          {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Sparkles size={17} style={{ color: 'var(--omni-red)' }} />
-              <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.01em' }}>
-                Price Summary
-              </h3>
-            </div>
-            <span style={{
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              padding: '3px 8px',
-              borderRadius: '6px',
-              background: 'rgba(220, 38, 38, 0.1)',
-              color: 'var(--omni-red)',
-            }}>
-              {qtyNum > 0 ? `${qtyNum} PCS` : 'SINGLE UNIT'}
-            </span>
-          </div>
-
-          {/* Primary Calculated Price Card */}
+          {/* ================= RESULT & ACTION FOOTER ================= */}
           <div style={{
             background: 'var(--bg-surface)',
             border: '1px solid var(--border-color)',
             borderRadius: '14px',
             padding: '1.25rem',
-            marginBottom: '1.25rem',
+            marginTop: '0.5rem',
           }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '6px' }}>
-              Total Calculated Price Per Unit
-            </span>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-              <span style={{ fontSize: '2.2rem', fontWeight: 900, color: 'var(--omni-red)', letterSpacing: '-0.02em', lineHeight: 1 }}>
-                ৳{formatMoney(Math.round(unitTotalPriceBdt))}
-              </span>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                BDT / unit
-              </span>
-            </div>
-
-            {qtyNum > 0 && (
+            {/* 3 Dedicated Price Displays: Product Price Without Weight, Weight Price, Total Price */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+              gap: '12px',
+              marginBottom: '1.25rem',
+            }}>
+              {/* 1. Product Price Without Weight */}
               <div style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '12px',
+                padding: '12px 14px',
                 display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginTop: '12px',
-                paddingTop: '10px',
-                borderTop: '1px solid var(--border-color)',
-                fontSize: '0.85rem',
-                color: 'var(--text-secondary)',
-              }}>
-                <span>Total for {qtyNum} pcs:</span>
-                <strong style={{ color: 'var(--text-primary)', fontSize: '1rem' }}>
-                  ৳{formatMoney(Math.round(totalBatchPriceBdt))} BDT
-                </strong>
-              </div>
-            )}
-          </div>
-
-          {/* Itemized Price Details */}
-          <div style={{
-            background: 'var(--bg-surface)',
-            borderRadius: '12px',
-            border: '1px solid var(--border-color)',
-            overflow: 'hidden',
-            marginBottom: '1.5rem',
-            fontSize: '0.82rem',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 12px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-              <span>Base Product Price ({currency === 'RMB' ? '¥' : '$'}{priceNum || 0} × {rateNum})</span>
-              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>৳{formatMoney(Math.round(unitItemPriceBdt))}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 12px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-              <span>Weight Cargo Price ({rawWeight || 0} {weightUnit} × ৳{fRateNum})</span>
-              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>৳{formatMoney(Math.round(unitFreightBdt))}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 12px', color: 'var(--text-secondary)', background: 'rgba(220, 38, 38, 0.04)' }}>
-              <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Combined Unit Price</span>
-              <span style={{ fontWeight: 800, color: 'var(--omni-red)' }}>৳{formatMoney(Math.round(unitTotalPriceBdt))}</span>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <button
-              onClick={handleAddToList}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
+                flexDirection: 'column',
                 justifyContent: 'center',
-                gap: '8px',
-                width: '100%',
-                padding: '12px',
-                borderRadius: '10px',
-                background: 'var(--omni-red)',
-                color: '#ffffff',
-                fontWeight: 700,
-                fontSize: '0.9rem',
-                cursor: 'pointer',
-                border: 'none',
-                boxShadow: '0 2px 10px rgba(220, 38, 38, 0.3)',
-                transition: 'all 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--omni-red-hover)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'var(--omni-red)';
-              }}
-            >
-              <ListPlus size={16} />
-              Add to Product List Builder
-            </button>
+              }}>
+                <span style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.03em',
+                  marginBottom: '4px',
+                }}>
+                  Product Price Without Weight
+                </span>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
+                  <span style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    ৳{formatMoney(Math.round(unitProductWithoutWeightBdt))}
+                  </span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>/ unit</span>
+                </div>
+                {qtyNum > 1 && (
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    Total ({qtyNum} pcs): ৳{formatMoney(Math.round(totalProductWithoutWeightBdt))}
+                  </span>
+                )}
+              </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              {/* 2. Weight Price */}
+              <div style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '12px',
+                padding: '12px 14px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+              }}>
+                <span style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.03em',
+                  marginBottom: '4px',
+                }}>
+                  Weight Price
+                </span>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
+                  <span style={{ fontSize: '1.35rem', fontWeight: 800, color: '#38bdf8' }}>
+                    ৳{formatMoney(Math.round(unitFreightBdt))}
+                  </span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>/ unit</span>
+                </div>
+                {qtyNum > 1 && (
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    Total ({qtyNum} pcs): ৳{formatMoney(Math.round(totalFreightBdt))}
+                  </span>
+                )}
+              </div>
+
+              {/* 3. Total Price */}
+              <div style={{
+                background: 'rgba(220, 38, 38, 0.08)',
+                border: '1px solid rgba(220, 38, 38, 0.3)',
+                borderRadius: '12px',
+                padding: '12px 14px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+              }}>
+                <span style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  color: 'var(--omni-red)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.03em',
+                  marginBottom: '4px',
+                }}>
+                  Total Price
+                </span>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
+                  <span style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--omni-red)' }}>
+                    ৳{formatMoney(Math.round(unitTotalPriceBdt))}
+                  </span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>/ unit</span>
+                </div>
+                {qtyNum > 1 && (
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#f87171', marginTop: '2px' }}>
+                    Total ({qtyNum} pcs): ৳{formatMoney(Math.round(totalBatchPriceBdt))}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              <button
+                onClick={handleAddToList}
+                style={{
+                  flex: '1 1 200px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  padding: '11px 16px',
+                  borderRadius: '10px',
+                  background: 'var(--omni-red)',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  cursor: 'pointer',
+                  border: 'none',
+                  boxShadow: '0 2px 10px rgba(220, 38, 38, 0.3)',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <ListPlus size={16} />
+                Add to Product List Builder
+              </button>
+
               <button
                 onClick={handleCopyQuotation}
                 style={{
@@ -916,24 +870,19 @@ export default function ProductPriceCalculator({
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '6px',
-                  padding: '9px',
-                  borderRadius: '8px',
-                  background: 'var(--bg-surface)',
+                  padding: '11px 14px',
+                  borderRadius: '10px',
+                  background: 'var(--bg-card)',
                   border: '1px solid var(--border-color)',
                   color: 'var(--text-primary)',
                   fontWeight: 600,
-                  fontSize: '0.8rem',
+                  fontSize: '0.82rem',
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--border-highlight)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--border-color)';
-                }}
+                title="Copy price quotation to clipboard"
               >
-                <Copy size={13} />
+                <Copy size={14} />
                 Copy Quote
               </button>
 
@@ -945,30 +894,25 @@ export default function ProductPriceCalculator({
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '6px',
-                  padding: '9px',
-                  borderRadius: '8px',
-                  background: 'var(--bg-surface)',
+                  padding: '11px 14px',
+                  borderRadius: '10px',
+                  background: 'var(--bg-card)',
                   border: '1px solid var(--border-color)',
                   color: 'var(--text-primary)',
                   fontWeight: 600,
-                  fontSize: '0.8rem',
+                  fontSize: '0.82rem',
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--border-highlight)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--border-color)';
-                }}
+                title="Export price quotation as PDF"
               >
-                <Download size={13} />
-                {exportingPdf ? 'Exporting...' : 'Export PDF'}
+                <Download size={14} />
+                {exportingPdf ? 'Exporting...' : 'PDF'}
               </button>
             </div>
           </div>
-        </div>
 
+        </div>
       </div>
     </div>
   );

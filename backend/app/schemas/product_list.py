@@ -26,6 +26,7 @@ class ProductListItem(BaseModel):
     weight_price_bdt: Optional[Decimal] = Decimal("0.00")
     line_weight_price_bdt: Optional[Decimal] = Decimal("0.00")
     combined_line_total_bdt: Optional[Decimal] = None
+    is_checked: Optional[bool] = False
 
 
 class ProductListCreate(BaseModel):
@@ -41,6 +42,7 @@ class ProductListCreate(BaseModel):
     freight_unit: Optional[str] = "per_gm"
     total_weight_price_bdt: Optional[Decimal] = Decimal("0.00")
     grand_total_bdt: Optional[Decimal] = None
+    checklist: Optional[List[dict]] = Field(default_factory=list)
 
 
 class ProductListResponse(BaseModel):
@@ -61,6 +63,7 @@ class ProductListResponse(BaseModel):
     total_weight_price_bdt: Optional[Decimal] = Decimal("0.00")
     grand_total_bdt: Optional[Decimal] = Decimal("0.00")
     notes: Optional[str] = None
+    checklist: Optional[List[dict]] = Field(default_factory=list)
     created_at: str
     updated_at: str
 

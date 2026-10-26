@@ -1,9 +1,14 @@
 from typing import List
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from backend.app.schemas.product_list import ProductListCreate, ProductListResponse
 from backend.app.services.product_list_service import product_list_service
+from backend.app.api.endpoints.auth import get_current_user
 
-router = APIRouter(prefix="/product-lists", tags=["Product Lists"])
+router = APIRouter(
+    prefix="/product-lists",
+    tags=["Product Lists"],
+    dependencies=[Depends(get_current_user)]
+)
 
 
 @router.post("", response_model=ProductListResponse, status_code=status.HTTP_201_CREATED)

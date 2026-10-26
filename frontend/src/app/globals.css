@@ -2,54 +2,122 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   NEUMORPHISM DESIGN SYSTEM (SOFT UI) - OMNI SOURCING PRO
+   Soft physical extrusions, tactile sunken wells, dual-directional lighting
+   ========================================================================== */
+
 :root,
 html[data-theme="dark"] {
   color-scheme: dark;
-  --bg-primary: #09090b;
-  --bg-surface: #121215;
-  --bg-card: #18181b;
-  --bg-card-hover: #27272a;
-  --text-primary: #f8fafc;
+  
+  /* Neumorphic Dark Palette (Matte Deep Slate Canvas) */
+  --bg-primary: #181b22;
+  --bg-surface: #1e222a;
+  --bg-card: #1e222a;
+  --bg-card-hover: #222731;
+  
+  --text-primary: #f1f5f9;
   --text-secondary: #cbd5e1;
-  --text-muted: #94a3b8;
+  --text-muted: #8c97a8;
   
-  --omni-red: #dc2626;
-  --omni-red-hover: #b91c1c;
-  --omni-red-glow: rgba(220, 38, 38, 0.25);
-  --omni-dark-red: #990000;
-  --omni-orange: #ea580c;
-  --omni-black: #000000;
+  /* Brand Accents with Neumorphic Ambient Glow */
+  --omni-red: #ef4444;
+  --omni-red-hover: #dc2626;
+  --omni-red-glow: 0 0 16px rgba(239, 68, 68, 0.4);
+  --omni-dark-red: #991b1b;
+  --omni-orange: #f97316;
+  --omni-black: #0e1014;
   
-  --border-color: #27272a;
-  --border-highlight: #3f3f46;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.5);
+  /* Neumorphic Dual Shadows (Top-Left Highlight / Bottom-Right Shadow) */
+  --neu-light-shadow: #282d38;
+  --neu-dark-shadow: #101217;
+  
+  /* Extruded Surfaces */
+  --neu-flat: 8px 8px 18px var(--neu-dark-shadow), -8px -8px 18px var(--neu-light-shadow);
+  --neu-flat-sm: 4px 4px 10px var(--neu-dark-shadow), -4px -4px 10px var(--neu-light-shadow);
+  --neu-flat-hover: 10px 10px 22px #0d0f13, -10px -10px 22px #2d333f;
+  
+  /* Sunken / Inset Wells (Inputs, Search, Sliders, Depressed State) */
+  --neu-sunken: inset 3px 3px 6px var(--neu-dark-shadow), inset -3px -3px 6px var(--neu-light-shadow);
+  --neu-pressed: inset 4px 4px 8px var(--neu-dark-shadow), inset -4px -4px 8px var(--neu-light-shadow);
+  --neu-sunken-deep: inset 5px 5px 10px var(--neu-dark-shadow), inset -5px -5px 10px var(--neu-light-shadow);
+  
+  /* Floating / Modal Elevation */
+  --neu-floating: 16px 16px 36px #0b0c10, -16px -16px 36px #2e3542;
+  
+  /* Gradients for Convex / Concave 3D Curves */
+  --neu-convex: linear-gradient(145deg, #21262f, #1b1e25);
+  --neu-concave: linear-gradient(145deg, #1b1e25, #21262f);
+  
+  /* Soft Edge Bevels */
+  --neu-rim: rgba(255, 255, 255, 0.06);
+  --neu-inset-border: rgba(255, 255, 255, 0.04);
+  --border-color: rgba(255, 255, 255, 0.07);
+  --border-highlight: rgba(255, 255, 255, 0.12);
+  
+  /* System Shadow Mapping */
+  --shadow-sm: var(--neu-flat-sm);
+  --shadow-md: var(--neu-flat);
+  --shadow-lg: var(--neu-floating);
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
 }
 
 html[data-theme="light"] {
   color-scheme: light;
-  --bg-primary: #f8fafc;
-  --bg-surface: #ffffff;
-  --bg-card: #ffffff;
-  --bg-card-hover: #f1f5f9;
-  --text-primary: #0f172a;
-  --text-secondary: #334155;
+  
+  /* Neumorphic Light Palette (Classic Silver-Slate Soft Surface) */
+  --bg-primary: #e6ecf5;
+  --bg-surface: #e6ecf5;
+  --bg-card: #e6ecf5;
+  --bg-card-hover: #dfe5ef;
+  
+  --text-primary: #1e293b;
+  --text-secondary: #475569;
   --text-muted: #64748b;
   
-  --omni-red: #dc2626;
-  --omni-red-hover: #b91c1c;
-  --omni-red-glow: rgba(220, 38, 38, 0.15);
-  --omni-dark-red: #990000;
+  /* Brand Accents with Neumorphic Ambient Glow */
+  --omni-red: #e11d48;
+  --omni-red-hover: #be123c;
+  --omni-red-glow: 0 0 16px rgba(225, 29, 72, 0.35);
+  --omni-dark-red: #881337;
   --omni-orange: #ea580c;
-  --omni-black: #000000;
+  --omni-black: #0f172a;
   
-  --border-color: #e2e8f0;
-  --border-highlight: #cbd5e1;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.08);
+  /* Neumorphic Dual Shadows (Top-Left Highlight / Bottom-Right Shadow) */
+  --neu-light-shadow: #ffffff;
+  --neu-dark-shadow: #bcc7d6;
+  
+  /* Extruded Surfaces */
+  --neu-flat: 8px 8px 18px var(--neu-dark-shadow), -8px -8px 18px var(--neu-light-shadow);
+  --neu-flat-sm: 4px 4px 10px var(--neu-dark-shadow), -4px -4px 10px var(--neu-light-shadow);
+  --neu-flat-hover: 11px 11px 22px #b4bfcf, -11px -11px 22px #ffffff;
+  
+  /* Sunken / Inset Wells */
+  --neu-sunken: inset 3px 3px 6px var(--neu-dark-shadow), inset -3px -3px 6px var(--neu-light-shadow);
+  --neu-pressed: inset 4px 4px 8px var(--neu-dark-shadow), inset -4px -4px 8px var(--neu-light-shadow);
+  --neu-sunken-deep: inset 5px 5px 10px var(--neu-dark-shadow), inset -5px -5px 10px var(--neu-light-shadow);
+  
+  /* Floating / Modal Elevation */
+  --neu-floating: 16px 16px 36px #b0bccd, -16px -16px 36px #ffffff;
+  
+  /* Gradients for Convex / Concave 3D Curves */
+  --neu-convex: linear-gradient(145deg, #f6fcff, #cfd8e5);
+  --neu-concave: linear-gradient(145deg, #cfd8e5, #f6fcff);
+  
+  /* Soft Edge Bevels */
+  --neu-rim: rgba(255, 255, 255, 0.85);
+  --neu-inset-border: rgba(188, 199, 214, 0.5);
+  --border-color: rgba(255, 255, 255, 0.65);
+  --border-highlight: rgba(188, 199, 214, 0.6);
+  
+  /* System Shadow Mapping */
+  --shadow-sm: var(--neu-flat-sm);
+  --shadow-md: var(--neu-flat);
+  --shadow-lg: var(--neu-floating);
 }
 
+/* Base Document Reset */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -64,6 +132,7 @@ body {
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 a {
@@ -71,239 +140,232 @@ a {
   text-decoration: none;
 }
 
+/* ==========================================================================
+   NEUMORPHIC INTERACTIVE CONTROLS
+   ========================================================================== */
+
+/* Universal Neumorphic Buttons */
 button {
   cursor: pointer;
-  border: none;
+  border: 1px solid var(--neu-rim);
   font-family: inherit;
+  border-radius: 12px;
+  background-color: var(--bg-surface);
+  box-shadow: var(--neu-flat-sm);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
 }
 
 button:hover {
+  box-shadow: var(--neu-flat-hover);
   transform: translateY(-1px);
 }
 
-button:active {
-  transform: translateY(0);
+button:active,
+button.is-active,
+button[aria-pressed="true"],
+button[aria-selected="true"] {
+  box-shadow: var(--neu-pressed) !important;
+  transform: translateY(0) !important;
 }
 
-input, select, textarea {
+/* Sunken Inset Neumorphic Inputs & Fields */
+input[type="text"],
+input[type="number"],
+input[type="search"],
+input[type="email"],
+input[type="password"],
+input[type="url"],
+input[type="date"],
+select,
+textarea {
   font-family: inherit;
-  color: var(--text-primary);
+  color: var(--text-primary) !important;
+  background-color: var(--bg-surface) !important;
+  border: 1px solid var(--neu-inset-border) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--neu-sunken) !important;
   transition: all 0.2s ease-in-out;
 }
 
-/* Accessibility focus visible rings (WCAG 2.1 AA) */
+input:focus,
+select:focus,
+textarea:focus {
+  box-shadow: var(--neu-sunken), 0 0 0 2px var(--omni-red) !important;
+  outline: none !important;
+}
+
+/* Accessibility Focus Visible */
 :focus-visible {
   outline: 2px solid var(--omni-red) !important;
   outline-offset: 2px !important;
 }
 
-input:focus, select:focus, textarea:focus {
-  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.4);
+/* Neumorphic Cards & Panels */
+.omni-panel,
+.glass-card,
+.omni-sidebar-card,
+.neu-card {
+  background-color: var(--bg-card) !important;
+  border: 1px solid var(--neu-rim) !important;
+  border-radius: 18px !important;
+  box-shadow: var(--neu-flat) !important;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
-/* Screen reader only utility class */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border-width: 0;
+.glass-card:hover,
+.omni-sidebar-card:hover,
+.neu-card:hover {
+  box-shadow: var(--neu-flat-hover) !important;
 }
 
-/* Reduced motion preference */
-@media (prefers-reduced-motion: reduce) {
-  *, ::before, ::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
-/* Glassmorphism Card Utilities */
-.glass-card {
-  background: rgba(24, 24, 27, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(63, 63, 70, 0.5);
-}
-
-.glass-card-hover {
-  transition: all 0.25s ease;
-}
-
-.glass-card-hover:hover {
-  border-color: rgba(220, 38, 38, 0.5);
-  box-shadow: 0 8px 30px rgba(220, 38, 38, 0.15);
-}
-
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: var(--bg-primary);
-}
-::-webkit-scrollbar-thumb {
-  background: #3f3f46;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--omni-red);
-}
-
-/* Print Optimization for A4 Paper */
-@media print {
-  @page {
-    size: A4 portrait;
-    margin: 10mm 10mm 10mm 10mm;
-  }
-  
-  body {
-    background: #ffffff !important;
-    color: #000000 !important;
-  }
-  
-  .no-print {
-    display: none !important;
-  }
-  
-  #a4-pdf-content {
-    display: block !important;
-    width: 100% !important;
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-}
-
-/* Ambient Floating Logo Watermark */
-.omni-watermark-layer {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.omni-watermark-radial-glow {
-  position: absolute;
-  width: 900px;
-  height: 900px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(220, 38, 38, 0.05) 0%, rgba(9, 9, 11, 0) 70%);
-  filter: blur(50px);
-  pointer-events: none;
-}
-
-.omni-watermark-float {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: omniWatermarkFloat 24s ease-in-out infinite alternate;
-  will-change: transform;
-}
-
-.omni-watermark-img {
-  width: 680px;
-  max-width: 85vw;
-  opacity: 0.05;
-  filter: contrast(1.1);
-  image-rendering: -webkit-optimize-contrast;
-  user-select: none;
-  -webkit-user-drag: none;
-  pointer-events: none;
-}
-
-.omni-watermark-float-secondary {
-  position: absolute;
-  top: 10%;
-  right: 8%;
-  animation: omniWatermarkFloatSecondary 32s ease-in-out infinite alternate-reverse;
-  will-change: transform;
-}
-
-.omni-watermark-img-secondary {
-  width: 260px;
-  max-width: 30vw;
-  opacity: 0.025;
-  filter: contrast(1.05);
-  image-rendering: -webkit-optimize-contrast;
-  user-select: none;
-  -webkit-user-drag: none;
-  pointer-events: none;
-}
-
-@keyframes omniWatermarkFloat {
-  0% {
-    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
-  }
-  33% {
-    transform: translate3d(22px, -28px, 0) scale(1.04) rotate(1.2deg);
-  }
-  66% {
-    transform: translate3d(-18px, 16px, 0) scale(0.98) rotate(-1.4deg);
-  }
-  100% {
-    transform: translate3d(12px, -22px, 0) scale(1.02) rotate(0.8deg);
-  }
-}
-
-@keyframes omniWatermarkFloatSecondary {
-  0% {
-    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
-  }
-  50% {
-    transform: translate3d(-25px, 20px, 0) scale(1.05) rotate(-2deg);
-  }
-  100% {
-    transform: translate3d(18px, -15px, 0) scale(0.96) rotate(1.5deg);
-  }
-}
-
-@keyframes statusPulse {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.4;
-    transform: scale(0.85);
-  }
-}
-
-/* Modern Minimalist Tokens & Utilities */
-.omni-panel {
-  background: rgba(24, 24, 27, 0.72);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.45);
-}
-
-.omni-segmented-tabs {
+/* Neumorphic Segmented Tabs Container */
+.omni-segmented-tabs,
+nav[role="tablist"] {
   display: inline-flex;
   align-items: center;
-  background: rgba(24, 24, 27, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  padding: 4px;
+  background-color: var(--bg-surface) !important;
+  border: 1px solid var(--neu-inset-border) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--neu-sunken) !important;
+  padding: 5px !important;
   gap: 4px;
 }
 
-/* 3-Column Studio Grid Layout */
+/* Segmented Tab Buttons */
+.omni-segmented-tabs button,
+nav[role="tablist"] button {
+  box-shadow: none;
+  border: 1px solid transparent;
+  background-color: transparent;
+  border-radius: 10px;
+}
+
+.omni-segmented-tabs button:hover,
+nav[role="tablist"] button:hover {
+  box-shadow: var(--neu-flat-sm);
+  background-color: var(--bg-card-hover);
+}
+
+.omni-segmented-tabs button.active,
+nav[role="tablist"] button.active,
+.omni-segmented-tabs button[aria-selected="true"],
+nav[role="tablist"] button[aria-selected="true"] {
+  box-shadow: var(--neu-flat-sm) !important;
+  background-color: var(--bg-card) !important;
+  border: 1px solid var(--neu-rim) !important;
+  color: var(--omni-red) !important;
+}
+
+/* ==========================================================================
+   NEUMORPHIC UTILITY CLASSES
+   ========================================================================== */
+
+/* Flat Extrusion */
+.neu-flat {
+  background-color: var(--bg-card);
+  border: 1px solid var(--neu-rim);
+  border-radius: 16px;
+  box-shadow: var(--neu-flat);
+}
+
+/* Small Extrusion */
+.neu-flat-sm {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--neu-rim);
+  border-radius: 12px;
+  box-shadow: var(--neu-flat-sm);
+}
+
+/* Sunken Inset Well */
+.neu-sunken {
+  background-color: var(--bg-surface) !important;
+  border: 1px solid var(--neu-inset-border) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--neu-sunken) !important;
+}
+
+/* Tactile Pressed Inset */
+.neu-pressed {
+  background-color: var(--bg-surface) !important;
+  border: 1px solid var(--neu-inset-border) !important;
+  box-shadow: var(--neu-pressed) !important;
+}
+
+/* Floating Elevated Surface */
+.neu-floating {
+  background-color: var(--bg-card) !important;
+  border: 1px solid var(--neu-rim) !important;
+  border-radius: 20px !important;
+  box-shadow: var(--neu-floating) !important;
+}
+
+/* Convex Pill Button */
+.neu-convex {
+  background: var(--neu-convex);
+  box-shadow: var(--neu-flat-sm);
+  border: 1px solid var(--neu-rim);
+}
+
+/* Pill Shapes */
+.neu-pill {
+  border-radius: 9999px !important;
+}
+
+/* Icon Button Well / Extrusion */
+.neu-icon-btn {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background-color: var(--bg-surface);
+  box-shadow: var(--neu-flat-sm);
+  border: 1px solid var(--neu-rim);
+  color: var(--text-secondary);
+}
+
+.neu-icon-btn:hover {
+  box-shadow: var(--neu-flat-hover);
+  color: var(--text-primary);
+}
+
+.neu-icon-btn:active {
+  box-shadow: var(--neu-pressed);
+}
+
+/* ==========================================================================
+   NEUMORPHIC SCROLLBAR
+   ========================================================================== */
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+  box-shadow: var(--neu-sunken);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-surface);
+  border: 1px solid var(--neu-rim);
+  box-shadow: var(--neu-flat-sm);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--omni-red);
+  box-shadow: 0 0 10px rgba(220, 38, 38, 0.5);
+}
+
+/* ==========================================================================
+   STUDIO GRID LAYOUT & WATERMARK
+   ========================================================================== */
+
 .omni-studio-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -339,25 +401,108 @@ input:focus, select:focus, textarea:focus {
   max-height: calc(100vh - 2.5rem);
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: #3f3f46 transparent;
+  scrollbar-color: var(--text-muted) transparent;
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
 
-.omni-sidebar-card {
-  background: rgba(24, 24, 27, 0.78);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  padding: 1rem;
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.35);
-  transition: border-color 0.2s ease;
+/* Ambient Floating Logo Watermark */
+.omni-watermark-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.omni-sidebar-card:hover {
-  border-color: rgba(255, 255, 255, 0.15);
+.omni-watermark-radial-glow {
+  position: absolute;
+  width: 900px;
+  height: 900px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(220, 38, 38, 0.04) 0%, rgba(24, 27, 34, 0) 70%);
+  filter: blur(50px);
+  pointer-events: none;
 }
 
+.omni-watermark-float {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: omniWatermarkFloat 24s ease-in-out infinite alternate;
+  will-change: transform;
+}
 
+.omni-watermark-img {
+  width: 680px;
+  max-width: 85vw;
+  opacity: 0.04;
+  filter: contrast(1.1);
+  image-rendering: -webkit-optimize-contrast;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+.omni-watermark-float-secondary {
+  position: absolute;
+  top: 10%;
+  right: 8%;
+  animation: omniWatermarkFloatSecondary 32s ease-in-out infinite alternate-reverse;
+  will-change: transform;
+}
+
+.omni-watermark-img-secondary {
+  width: 260px;
+  max-width: 30vw;
+  opacity: 0.02;
+  filter: contrast(1.05);
+  image-rendering: -webkit-optimize-contrast;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+@keyframes omniWatermarkFloat {
+  0% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+  33% { transform: translate3d(22px, -28px, 0) scale(1.04) rotate(1.2deg); }
+  66% { transform: translate3d(-18px, 16px, 0) scale(0.98) rotate(-1.4deg); }
+  100% { transform: translate3d(12px, -22px, 0) scale(1.02) rotate(0.8deg); }
+}
+
+@keyframes omniWatermarkFloatSecondary {
+  0% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+  50% { transform: translate3d(-25px, 20px, 0) scale(1.05) rotate(-2deg); }
+  100% { transform: translate3d(18px, -15px, 0) scale(0.96) rotate(1.5deg); }
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+/* Print Optimization for A4 Paper */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm 10mm 10mm 10mm;
+  }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  #a4-pdf-content {
+    display: block !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}

@@ -2,7 +2,14 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_product_list_crud_flow(async_client):
+async def test_unauthenticated_product_list_access_blocked(async_client):
+    """Verify that unauthenticated access to product lists returns 401."""
+    res = await async_client.get("/product-lists")
+    assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_product_list_crud_flow(authenticated_client):
     # 1. Create list
     payload = {
         "name": "Q4 Sourcing List - Smartwatches & Wearables",
@@ -38,7 +45,7 @@ async def test_product_list_crud_flow(async_client):
         ]
     }
 
-    create_res = await async_client.post("/product-lists", json=payload)
+    create_res = await authenticated_client.post("/product-lists", json=payload)
     assert create_res.status_code == 201
     created_data = create_res.json()
 
@@ -61,12 +68,12 @@ async def test_product_list_crud_flow(async_client):
     assert created_data["payment_status"] == "unpaid"
 
     # 2. Get list by ID
-    get_res = await async_client.get(f"/product-lists/{list_id}")
+    get_res = await authenticated_client.get(f"/product-lists/{list_id}")
     assert get_res.status_code == 200
     assert get_res.json()["id"] == list_id
 
     # 3. List all
-    list_all_res = await async_client.get("/product-lists")
+    list_all_res = await authenticated_client.get("/product-lists")
     assert list_all_res.status_code == 200
     assert len(list_all_res.json()) >= 1
 
@@ -74,7 +81,7 @@ async def test_product_list_crud_flow(async_client):
     payload["name"] = "Updated Q4 Sourcing List"
     payload["items"][0]["paid_amount_bdt"] = 5600.00  # Item 1 fully paid
     payload["items"][1]["paid_amount_bdt"] = 3000.00  # Item 2 partial paid
-    update_res = await async_client.put(f"/product-lists/{list_id}", json=payload)
+    update_res = await authenticated_client.put(f"/product-lists/{list_id}", json=payload)
     assert update_res.status_code == 200
     updated_data = update_res.json()
     assert updated_data["name"] == "Updated Q4 Sourcing List"
@@ -87,9 +94,9 @@ async def test_product_list_crud_flow(async_client):
     assert float(updated_data["items"][1]["due_amount_bdt"]) == 15000.0
 
     # 5. Delete list
-    del_res = await async_client.delete(f"/product-lists/{list_id}")
+    del_res = await authenticated_client.delete(f"/product-lists/{list_id}")
     assert del_res.status_code == 204
 
     # 6. Verify deletion
-    get_again = await async_client.get(f"/product-lists/{list_id}")
+    get_again = await authenticated_client.get(f"/product-lists/{list_id}")
     assert get_again.status_code == 404

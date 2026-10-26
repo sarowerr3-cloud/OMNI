@@ -64,13 +64,18 @@ class AliExpressConnector(AbstractProductConnector):
             f"Return ONLY valid JSON array."
         )
 
-        response = gemini_service._client.models.generate_content(
-            model=gemini_service.model,
-            contents=prompt,
-            config=genai_types.GenerateContentConfig(
-                response_mime_type="application/json",
-                tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
-            ),
+        loop = asyncio.get_event_loop()
+        _config = genai_types.GenerateContentConfig(
+            response_mime_type="application/json",
+            tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
+        )
+        response = await loop.run_in_executor(
+            None,
+            lambda: gemini_service._client.models.generate_content(
+                model=gemini_service.model,
+                contents=prompt,
+                config=_config,
+            )
         )
 
         parsed = json.loads(response.text.strip())
@@ -269,13 +274,18 @@ class Connector1688(AbstractProductConnector):
             f"Return ONLY valid JSON array."
         )
 
-        response = gemini_service._client.models.generate_content(
-            model=gemini_service.model,
-            contents=prompt,
-            config=genai_types.GenerateContentConfig(
-                response_mime_type="application/json",
-                tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
-            ),
+        loop = asyncio.get_event_loop()
+        _config = genai_types.GenerateContentConfig(
+            response_mime_type="application/json",
+            tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
+        )
+        response = await loop.run_in_executor(
+            None,
+            lambda: gemini_service._client.models.generate_content(
+                model=gemini_service.model,
+                contents=prompt,
+                config=_config,
+            )
         )
 
         parsed = json.loads(response.text.strip())

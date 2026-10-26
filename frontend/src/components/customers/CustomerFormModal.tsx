@@ -1,7 +1,8 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
-import { UserPlus, X } from 'lucide-react';
-import { Customer, CustomerGroup } from '@/components/CustomerManager';
-import { CustomerPayload } from '@/services/customerApi';
+import { UserPlus, X, Phone, MapPin, FileText, User } from 'lucide-react';
+import { Customer, CustomerGroup, CustomerPayload } from '@/types/customer';
 import { inputStyle, labelStyle, buttonActionStyle } from './customerStyles';
 
 interface CustomerFormModalProps {
@@ -9,6 +10,7 @@ interface CustomerFormModalProps {
   onClose: () => void;
   editingCustomer: Customer | null;
   groups: CustomerGroup[];
+  prefilledQuery?: string;
   onSave: (payload: CustomerPayload) => Promise<void>;
   isSaving: boolean;
 }
@@ -18,6 +20,7 @@ export default function CustomerFormModal({
   onClose,
   editingCustomer,
   groups,
+  prefilledQuery = '',
   onSave,
   isSaving
 }: CustomerFormModalProps) {
@@ -41,8 +44,10 @@ export default function CustomerFormModal({
       setAddress(editingCustomer.address || '');
       setNotes(editingCustomer.notes || '');
     } else {
-      setName('');
-      setPhone('');
+      // Check if prefilledQuery is a phone number or name
+      const isDigits = prefilledQuery && /^[\d\+\-\s]+$/.test(prefilledQuery.trim());
+      setName(isDigits ? '' : prefilledQuery.trim());
+      setPhone(isDigits ? prefilledQuery.trim() : '');
       setEmail('');
       setGroup(groups.length > 0 ? groups[0].name : 'Wholesale Buyers');
       setCategory('Electronics');
@@ -50,7 +55,7 @@ export default function CustomerFormModal({
       setAddress('');
       setNotes('');
     }
-  }, [editingCustomer, groups, isOpen]);
+  }, [editingCustomer, groups, prefilledQuery, isOpen]);
 
   if (!isOpen) return null;
 
@@ -70,46 +75,126 @@ export default function CustomerFormModal({
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-      <div style={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '16px', maxWidth: '580px', width: '100%', padding: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid #27272a', marginBottom: '1.25rem' }}>
-          <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <UserPlus style={{ width: '20px', height: '20px', color: '#dc2626' }} />
-            {editingCustomer ? 'Edit Customer Details' : 'Register New Retail Customer'}
-          </h3>
-          <button onClick={onClose} style={{ padding: '6px', backgroundColor: '#27272a', border: 'none', borderRadius: '8px', color: '#a1a1aa', cursor: 'pointer' }}>
-            <X style={{ width: '18px', height: '18px' }} />
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1000,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        backdropFilter: 'blur(6px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1rem',
+        animation: 'fadeIn 0.2s ease',
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          border: '1px solid var(--neu-rim)',
+          borderRadius: '20px',
+          boxShadow: 'var(--neu-flat)',
+          maxWidth: '600px',
+          width: '100%',
+          padding: '1.75rem',
+          maxHeight: '90vh',
+          overflowY: 'auto',
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingBottom: '1rem',
+            borderBottom: '1px solid var(--neu-rim)',
+            marginBottom: '1.25rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div
+              style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)',
+              }}
+            >
+              <UserPlus size={18} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
+                {editingCustomer ? 'Edit Customer Profile' : 'Create Customer Profile'}
+              </h3>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                Profile containing Name, Phone Number, Address, and Special Notes
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            style={{
+              padding: '6px',
+              backgroundColor: 'transparent',
+              border: 'none',
+              borderRadius: '8px',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+            }}
+            title="Close"
+          >
+            <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+          {/* Customer Name */}
           <div>
             <label style={labelStyle}>
-              Customer / Shop Name <span style={{ color: '#dc2626' }}>*</span>
+              Customer Full Name / Shop Name <span style={{ color: 'var(--omni-red)' }}>*</span>
             </label>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Rafiqul Islam (Dhaka Gadget Hub)"
-              style={inputStyle}
-            />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div>
-              <label style={labelStyle}>
-                Phone / WhatsApp <span style={{ color: '#dc2626' }}>*</span>
-              </label>
+            <div style={{ position: 'relative' }}>
+              <User size={15} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
               <input
                 type="text"
                 required
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="e.g. +8801711223344"
-                style={inputStyle}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Rafiqul Islam (Dhaka Gadget Hub)"
+                style={{ ...inputStyle, paddingLeft: '36px' }}
               />
+            </div>
+          </div>
+
+          {/* Phone & Email */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div>
+              <label style={labelStyle}>
+                Phone Number <span style={{ color: 'var(--omni-red)' }}>*</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Phone size={15} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
+                <input
+                  type="tel"
+                  required
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="e.g. 01711223344"
+                  style={{ ...inputStyle, paddingLeft: '36px' }}
+                />
+              </div>
             </div>
 
             <div>
@@ -124,15 +209,32 @@ export default function CustomerFormModal({
             </div>
           </div>
 
+          {/* Address */}
+          <div>
+            <label style={labelStyle}>
+              Delivery Address / Retail Location <span style={{ color: 'var(--omni-red)' }}>*</span>
+            </label>
+            <div style={{ position: 'relative' }}>
+              <MapPin size={15} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                required
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="e.g. Shop 42, Level 3, Multiplan Center, Elephant Road, Dhaka"
+                style={{ ...inputStyle, paddingLeft: '36px' }}
+              />
+            </div>
+          </div>
+
+          {/* Group and City */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
-              <label style={labelStyle}>
-                Customer Group <span style={{ color: '#dc2626' }}>*</span>
-              </label>
+              <label style={labelStyle}>Customer Group</label>
               <select
                 value={group}
                 onChange={(e) => setGroup(e.target.value)}
-                style={{ ...inputStyle, backgroundColor: '#09090b', fontWeight: 700 }}
+                style={{ ...inputStyle, fontWeight: 700 }}
               >
                 {groups.map((grp) => (
                   <option key={grp.id} value={grp.name}>{grp.name}</option>
@@ -141,29 +243,11 @@ export default function CustomerFormModal({
             </div>
 
             <div>
-              <label style={labelStyle}>Product Category</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                style={{ ...inputStyle, backgroundColor: '#09090b' }}
-              >
-                <option value="Electronics">Electronics</option>
-                <option value="Smart Watches">Smart Watches</option>
-                <option value="Audio & Earbuds">Audio & Earbuds</option>
-                <option value="Fashion & Apparel">Fashion & Apparel</option>
-                <option value="Home Goods">Home Goods</option>
-                <option value="General Retail">General Retail</option>
-              </select>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '1rem' }}>
-            <div>
-              <label style={labelStyle}>City / Region</label>
+              <label style={labelStyle}>City / Division</label>
               <select
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                style={{ ...inputStyle, backgroundColor: '#09090b' }}
+                style={inputStyle}
               >
                 <option value="Dhaka">Dhaka</option>
                 <option value="Chittagong">Chittagong</option>
@@ -175,35 +259,37 @@ export default function CustomerFormModal({
                 <option value="Mymensingh">Mymensingh</option>
               </select>
             </div>
-
-            <div>
-              <label style={labelStyle}>Shop Address / Location</label>
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="e.g. Shop 42, Multiplan Center, Dhaka"
-                style={inputStyle}
-              />
-            </div>
           </div>
 
+          {/* Brief Notes */}
           <div>
-            <label style={labelStyle}>Sourcing Preferences & Notes</label>
+            <label style={labelStyle}>
+              Brief Notes (Special Customer Requirements / Reminders)
+            </label>
             <textarea
               rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. Prefers Ultra 8/9 AMOLED watches. Buys 30-50 units per order. Prefers Air freight shipping."
-              style={{ ...inputStyle, resize: 'vertical' }}
+              placeholder="e.g. Prefers AMOLED smartwatches, requires delivery confirmation via WhatsApp, special credit terms or delivery reminders..."
+              style={{ ...inputStyle, resize: 'vertical', lineHeight: '1.4' }}
             />
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid #27272a' }}>
+          {/* Action buttons */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '12px',
+              marginTop: '0.5rem',
+              paddingTop: '1rem',
+              borderTop: '1px solid var(--neu-rim)',
+            }}
+          >
             <button
               type="button"
               onClick={onClose}
-              style={{ ...buttonActionStyle, backgroundColor: '#27272a' }}
+              style={{ ...buttonActionStyle, background: 'transparent' }}
             >
               Cancel
             </button>
@@ -212,13 +298,15 @@ export default function CustomerFormModal({
               disabled={isSaving}
               style={{
                 ...buttonActionStyle,
-                backgroundColor: '#dc2626',
-                borderColor: '#dc2626',
+                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
                 color: '#ffffff',
-                fontWeight: 700
+                border: 'none',
+                fontWeight: 700,
+                padding: '10px 24px',
+                boxShadow: '0 4px 12px rgba(220, 38, 38, 0.35)',
               }}
             >
-              {isSaving ? 'Saving...' : editingCustomer ? 'Update Customer' : 'Register Customer'}
+              {isSaving ? 'Saving...' : editingCustomer ? 'Update Profile' : 'Save Profile'}
             </button>
           </div>
         </form>

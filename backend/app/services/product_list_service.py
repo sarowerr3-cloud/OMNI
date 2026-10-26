@@ -101,6 +101,7 @@ class ProductListService:
             total_weight_price_bdt=total_weight_price_bdt,
             grand_total_bdt=grand_total_bdt,
             notes=data.notes,
+            checklist=data.checklist or [],
             created_at=now,
             updated_at=now
         )
@@ -143,6 +144,7 @@ class ProductListService:
             total_weight_price_bdt=total_weight_price_bdt,
             grand_total_bdt=grand_total_bdt,
             notes=data.notes,
+            checklist=data.checklist or (existing.checklist if hasattr(existing, 'checklist') else []),
             created_at=existing.created_at,
             updated_at=now
         )

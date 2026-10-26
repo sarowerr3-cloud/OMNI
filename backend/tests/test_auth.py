@@ -39,3 +39,32 @@ async def test_get_me_with_valid_token(async_client):
     me_data = me_resp.json()
     assert me_data["email"] == "user@sourceiq.com"
     assert me_data["role"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_register_and_login(async_client):
+    reg_email = "new_trader@sourceiq.com"
+    reg_pass = "traderSecret123"
+
+    reg_resp = await async_client.post(
+        "/auth/register",
+        json={"email": reg_email, "password": reg_pass, "full_name": "New Trader"}
+    )
+    assert reg_resp.status_code in (201, 409)
+
+    login_resp = await async_client.post(
+        "/auth/login",
+        json={"email": reg_email, "password": reg_pass}
+    )
+    assert login_resp.status_code == 200
+    assert "access_token" in login_resp.json()
+
+
+@pytest.mark.asyncio
+async def test_register_short_password_validation(async_client):
+    reg_resp = await async_client.post(
+        "/auth/register",
+        json={"email": "short@sourceiq.com", "password": "short"}
+    )
+    assert reg_resp.status_code == 422
+

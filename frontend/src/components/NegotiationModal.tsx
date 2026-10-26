@@ -64,15 +64,15 @@ export default function NegotiationModal({
     >
       <div
         style={{
-          background: '#18181b',
-          border: '1px solid #dc2626',
-          borderRadius: '16px',
+          background: 'var(--bg-card)',
+          border: '1px solid var(--neu-rim)',
+          borderRadius: '20px',
           maxWidth: '680px',
           width: '100%',
           maxHeight: '90vh',
           overflowY: 'auto',
           padding: '1.75rem',
-          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.8), 0 0 30px rgba(220, 38, 38, 0.25)',
+          boxShadow: 'var(--neu-floating)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -103,14 +103,14 @@ export default function NegotiationModal({
         </div>
 
         {/* Product summary */}
-        <div style={{ background: '#09090b', padding: '0.85rem', borderRadius: '10px', border: '1px solid #27272a', marginBottom: '1.25rem' }}>
-          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc', marginBottom: '4px' }}>
+        <div style={{ background: 'var(--bg-surface)', padding: '0.85rem', borderRadius: '12px', border: '1px solid var(--neu-inset-border)', boxShadow: 'var(--neu-sunken)', marginBottom: '1.25rem' }}>
+          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
             {product.title_en || product.title_original}
           </div>
-          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: '#a1a1aa' }}>
-            <span>Platform: <strong style={{ color: '#dc2626' }}>{product.platform}</strong></span>
-            <span>Current Listed Price: <strong style={{ color: '#fff' }}>¥{currentRmbPrice} RMB</strong></span>
-            <span>MOQ: <strong style={{ color: '#fff' }}>{product.moq} pcs</strong></span>
+          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+            <span>Platform: <strong style={{ color: 'var(--omni-red)' }}>{product.platform}</strong></span>
+            <span>Current Listed Price: <strong style={{ color: 'var(--text-primary)' }}>¥{currentRmbPrice} RMB</strong></span>
+            <span>MOQ: <strong style={{ color: 'var(--text-primary)' }}>{product.moq} pcs</strong></span>
           </div>
         </div>
 
@@ -214,8 +214,8 @@ export default function NegotiationModal({
         </div>
 
         {/* English Translation Guide */}
-        <div style={{ background: '#09090b', padding: '0.85rem', borderRadius: '8px', border: '1px solid #27272a', marginBottom: '1rem', fontSize: '0.75rem', color: '#94a3b8' }}>
-          <strong style={{ color: '#f8fafc', display: 'block', marginBottom: '4px' }}>English Meaning:</strong>
+        <div style={{ background: 'var(--bg-surface)', padding: '0.85rem', borderRadius: '12px', border: '1px solid var(--neu-inset-border)', boxShadow: 'var(--neu-sunken)', marginBottom: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+          <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>English Meaning:</strong>
           "Hello boss! We are a professional import trader from Bangladesh. We are interested in your product and want to place a trial order of ${targetQty} pcs. If quality is satisfactory, we will place regular bulk repeat orders monthly. Can you offer ¥${targetPrice} / pc? Are packing specs and ready inventory available? Can you provide a sample?"
         </div>
 

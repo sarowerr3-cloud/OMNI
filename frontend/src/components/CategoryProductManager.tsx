@@ -47,7 +47,6 @@ import { compressImageFile, formatExternalUrl } from '@/components/ProductListBu
 interface CategoryProductManagerProps {
   onSelectForCalculator: (product: CategorizedProduct) => void;
   onAddToList: (product: CategorizedProduct) => void;
-  onSearchInAiHub?: (query: string) => void;
   rmbRate?: number;
   freightRate?: number;
   freightUnit?: 'per_gm' | 'per_kg';
@@ -56,7 +55,6 @@ interface CategoryProductManagerProps {
 export default function CategoryProductManager({
   onSelectForCalculator,
   onAddToList,
-  onSearchInAiHub,
   rmbRate = 20.0,
   freightRate = 1.2,
   freightUnit = 'per_gm',
@@ -1704,32 +1702,7 @@ export default function CategoryProductManager({
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              {onSearchInAiHub && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const searchTarget = activeCategory !== 'all' ? getCategoryDefinition(activeCategory).name : searchQuery;
-                    onSearchInAiHub(searchTarget);
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    padding: '4px 10px',
-                    borderRadius: '6px',
-                    background: 'var(--bg-card)',
-                    border: '1px solid var(--border-highlight)',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.74rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                  title="Search real factory suppliers across 1688, Pinduoduo & AliExpress"
-                >
-                  <Sparkles size={12} style={{ color: 'var(--omni-red)' }} />
-                  <span>Search China Suppliers ↗</span>
-                </button>
-              )}
+
 
               <button
                 type="button"
@@ -1939,30 +1912,7 @@ export default function CategoryProductManager({
               <span>{activeCategory !== 'all' ? `Add Product to ${getCategoryDefinition(activeCategory).name}` : 'Add Product Now'}</span>
             </button>
 
-            {onSearchInAiHub && (
-              <button
-                onClick={() => {
-                  const targetQuery = activeCategory !== 'all' ? getCategoryDefinition(activeCategory).name : searchQuery || 'Trending Products';
-                  onSearchInAiHub(targetQuery);
-                }}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '9px 20px',
-                  borderRadius: '8px',
-                  background: 'var(--bg-surface)',
-                  border: '1px solid var(--border-highlight)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                <Sparkles size={15} style={{ color: 'var(--omni-red)' }} />
-                <span>Live Search China Factories (1688 / PDD)</span>
-              </button>
-            )}
+
           </div>
         </div>
       ) : (

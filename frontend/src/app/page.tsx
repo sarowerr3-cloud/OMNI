@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { 
   Package,
   Layers, 
   Calculator, 
   ListOrdered, 
-  Search, 
   Sun, 
   Moon, 
   MessageCircle, 
@@ -15,19 +15,32 @@ import {
   ExternalLink,
   Sparkles,
   Settings,
-  ChevronDown
+  ChevronDown,
+  FileSpreadsheet,
+  ListChecks,
+  CheckSquare,
+  Users
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import CategoryProductManager from '@/components/CategoryProductManager';
 import ProductPriceCalculator from '@/components/ProductPriceCalculator';
 import ProductListBuilder, { ProductItem } from '@/components/ProductListBuilder';
-import AiSourcingHub from '@/components/AiSourcingHub';
+import SourcingChecklistManager from '@/components/SourcingChecklistManager';
+import OrdersManager from '@/components/OrdersManager';
+import CustomerManager from '@/components/CustomerManager';
+import UniversalCustomerSearch from '@/components/customers/UniversalCustomerSearch';
+import CustomerProfileModal from '@/components/customers/CustomerProfileModal';
+import CustomerOrderModal from '@/components/customers/CustomerOrderModal';
+import CustomerFormModal from '@/components/customers/CustomerFormModal';
+import { Customer, CustomerGroup, CustomerOrder, CustomerOrderPayload, CustomerPayload } from '@/types/customer';
+import { customerApi } from '@/services/customerApi';
 import { CategorizedProduct } from '@/types/catalog';
 import { WHATSAPP_GROUP_URL, openWhatsAppGroup } from '@/config/whatsapp';
+import AuthModal from '@/components/auth/AuthModal';
 
 export default function Home() {
   const { theme, toggleTheme } = useTheme();
-  const [activeTab, setActiveTab] = useState<'categories' | 'calculator' | 'list' | 'search'>('categories');
+  const [activeTab, setActiveTab] = useState<'categories' | 'calculator' | 'list' | 'orders' | 'checklist' | 'customers'>('categories');
   
   // Shared List Builder Items
   const [listItems, setListItems] = useState<ProductItem[]>([]);
@@ -49,13 +62,17 @@ export default function Home() {
   const [freightUnit, setFreightUnit] = useState<'per_gm' | 'per_kg'>('per_gm');
   const [showRateSettings, setShowRateSettings] = useState<boolean>(false);
   const [backendHealth, setBackendHealth] = useState<'online' | 'offline' | 'checking'>('checking');
-  const [aiSearchQuery, setAiSearchQuery] = useState<string>('');
 
-  const handleSearchInAiHub = (query: string) => {
-    setAiSearchQuery(query);
-    setActiveTab('search');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  // Customer Management & Universal Search State
+  const [homeProfileCustomer, setHomeProfileCustomer] = useState<Customer | null>(null);
+  const [homeOrderCustomer, setHomeOrderCustomer] = useState<Customer | null>(null);
+  const [homeOrderToEdit, setHomeOrderToEdit] = useState<CustomerOrder | null>(null);
+  const [homeShowAddCustomer, setHomeShowAddCustomer] = useState<boolean>(false);
+  const [homePrefillQuery, setHomePrefillQuery] = useState<string>('');
+  const [customerGroups, setCustomerGroups] = useState<CustomerGroup[]>([]);
+  const [savingCustomer, setSavingCustomer] = useState<boolean>(false);
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
   // Load stored list items & rates on mount
   useEffect(() => {
@@ -75,15 +92,64 @@ export default function Home() {
       // ignore
     }
 
-    // Check backend health
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    // Check backend health & fetch customer groups
     fetch(`${apiUrl}/health`, { signal: AbortSignal.timeout(3000) })
       .then((res) => {
         if (res.ok) setBackendHealth('online');
         else setBackendHealth('offline');
       })
       .catch(() => setBackendHealth('offline'));
-  }, []);
+
+    customerApi.getGroups(apiUrl).then(setCustomerGroups).catch(() => {});
+  }, [apiUrl]);
+
+  // Handlers for Universal Search & Customer Actions
+  const handleHomeSelectCustomer = (customer: Customer) => {
+    setHomeProfileCustomer(customer);
+  };
+
+  const handleHomeOpenNewOrder = (customer: Customer) => {
+    setHomeOrderCustomer(customer);
+    setHomeOrderToEdit(null);
+  };
+
+  const handleHomeCreateCustomer = (prefill?: string) => {
+    setHomePrefillQuery(prefill || '');
+    setHomeShowAddCustomer(true);
+  };
+
+  const handleHomeSaveCustomer = async (payload: CustomerPayload) => {
+    setSavingCustomer(true);
+    try {
+      const created = await customerApi.createCustomer(apiUrl, payload);
+      showToast(`🎉 Customer profile created for "${created.name}"!`);
+      setHomeShowAddCustomer(false);
+      setHomeProfileCustomer(created);
+    } catch {
+      showToast('❌ Error creating customer profile');
+    } finally {
+      setSavingCustomer(false);
+    }
+  };
+
+  const handleHomeSaveOrder = async (orderPayload: CustomerOrderPayload, orderId?: string) => {
+    if (!homeOrderCustomer) return;
+    try {
+      if (orderId) {
+        await customerApi.updateCustomerOrder(apiUrl, homeOrderCustomer.id, orderId, orderPayload);
+        showToast('✅ Order updated successfully!');
+      } else {
+        await customerApi.addCustomerOrder(apiUrl, homeOrderCustomer.id, orderPayload);
+        showToast('✅ Order saved to customer profile!');
+      }
+      const refreshed = await customerApi.getCustomer(apiUrl, homeOrderCustomer.id);
+      setHomeProfileCustomer(refreshed);
+      setHomeOrderCustomer(null);
+      setHomeOrderToEdit(null);
+    } catch {
+      showToast('❌ Error saving order');
+    }
+  };
 
   // Save list items to localStorage
   const handleUpdateListItems = (updated: ProductItem[]) => {
@@ -181,14 +247,13 @@ export default function Home() {
 
       {/* MINIMALIST TOP APP HEADER */}
       <header style={{
-        background: 'var(--bg-card)',
-        borderBottom: '1px solid var(--border-color)',
-        padding: '0.75rem 1.5rem',
+        background: 'var(--bg-surface)',
+        borderBottom: '1px solid var(--neu-rim)',
+        boxShadow: 'var(--neu-flat-sm)',
+        padding: '0.85rem 1.5rem',
         position: 'sticky',
         top: 0,
         zIndex: 50,
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
       }}>
         <div style={{
           maxWidth: '1280px',
@@ -205,12 +270,12 @@ export default function Home() {
               style={{
                 background: '#ffffff',
                 padding: '4px 10px',
-                borderRadius: '10px',
+                borderRadius: '12px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 2px 10px rgba(0, 0, 0, 0.22)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
+                boxShadow: 'var(--neu-flat-sm)',
+                border: '1px solid var(--neu-rim)',
                 height: '42px',
                 flexShrink: 0,
                 cursor: 'pointer',
@@ -237,11 +302,12 @@ export default function Home() {
                 <span style={{
                   fontSize: '0.65rem',
                   fontWeight: 800,
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  background: 'rgba(220, 38, 38, 0.15)',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  boxShadow: 'var(--neu-flat-sm)',
                   color: 'var(--omni-red)',
-                  border: '1px solid rgba(220, 38, 38, 0.35)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
                 }}>
@@ -254,15 +320,16 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Centered Segmented Navigation Tab Bar */}
+          {/* Centered Segmented Navigation Tab Bar (Neumorphic Sunken Well) */}
           <nav style={{
             display: 'flex',
             alignItems: 'center',
             background: 'var(--bg-surface)',
-            padding: '4px',
-            borderRadius: '12px',
-            border: '1px solid var(--border-color)',
-            gap: '2px',
+            padding: '5px',
+            borderRadius: '16px',
+            border: '1px solid var(--neu-inset-border)',
+            boxShadow: 'var(--neu-sunken)',
+            gap: '4px',
           }}>
             <button
               onClick={() => setActiveTab('categories')}
@@ -270,16 +337,16 @@ export default function Home() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                padding: '7px 14px',
-                borderRadius: '8px',
+                padding: '8px 16px',
+                borderRadius: '11px',
                 fontSize: '0.82rem',
                 fontWeight: 600,
-                border: 'none',
+                border: activeTab === 'categories' ? '1px solid var(--neu-rim)' : '1px solid transparent',
                 background: activeTab === 'categories' ? 'var(--bg-card)' : 'transparent',
                 color: activeTab === 'categories' ? 'var(--omni-red)' : 'var(--text-secondary)',
-                boxShadow: activeTab === 'categories' ? 'var(--shadow-sm)' : 'none',
+                boxShadow: activeTab === 'categories' ? 'var(--neu-flat-sm)' : 'none',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease',
+                transition: 'all 0.18s ease',
               }}
             >
               <Package size={15} />
@@ -292,16 +359,16 @@ export default function Home() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                padding: '7px 14px',
-                borderRadius: '8px',
+                padding: '8px 16px',
+                borderRadius: '11px',
                 fontSize: '0.82rem',
                 fontWeight: 600,
-                border: 'none',
+                border: activeTab === 'calculator' ? '1px solid var(--neu-rim)' : '1px solid transparent',
                 background: activeTab === 'calculator' ? 'var(--bg-card)' : 'transparent',
                 color: activeTab === 'calculator' ? 'var(--omni-red)' : 'var(--text-secondary)',
-                boxShadow: activeTab === 'calculator' ? 'var(--shadow-sm)' : 'none',
+                boxShadow: activeTab === 'calculator' ? 'var(--neu-flat-sm)' : 'none',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease',
+                transition: 'all 0.18s ease',
               }}
             >
               <Calculator size={15} />
@@ -314,16 +381,16 @@ export default function Home() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                padding: '7px 14px',
-                borderRadius: '8px',
+                padding: '8px 16px',
+                borderRadius: '11px',
                 fontSize: '0.82rem',
                 fontWeight: 600,
-                border: 'none',
+                border: activeTab === 'list' ? '1px solid var(--neu-rim)' : '1px solid transparent',
                 background: activeTab === 'list' ? 'var(--bg-card)' : 'transparent',
                 color: activeTab === 'list' ? 'var(--omni-red)' : 'var(--text-secondary)',
-                boxShadow: activeTab === 'list' ? 'var(--shadow-sm)' : 'none',
+                boxShadow: activeTab === 'list' ? 'var(--neu-flat-sm)' : 'none',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease',
+                transition: 'all 0.18s ease',
               }}
             >
               <ListOrdered size={15} />
@@ -337,6 +404,7 @@ export default function Home() {
                   color: '#ffffff',
                   fontWeight: 700,
                   marginLeft: '2px',
+                  boxShadow: '0 2px 5px rgba(220, 38, 38, 0.4)',
                 }}>
                   {listItems.length}
                 </span>
@@ -344,27 +412,99 @@ export default function Home() {
             </button>
 
             <button
-              onClick={() => setActiveTab('search')}
+              onClick={() => setActiveTab('customers')}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                padding: '7px 14px',
-                borderRadius: '8px',
+                padding: '8px 16px',
+                borderRadius: '11px',
                 fontSize: '0.82rem',
                 fontWeight: 600,
-                border: 'none',
-                background: activeTab === 'search' ? 'var(--bg-card)' : 'transparent',
-                color: activeTab === 'search' ? 'var(--omni-red)' : 'var(--text-secondary)',
-                boxShadow: activeTab === 'search' ? 'var(--shadow-sm)' : 'none',
+                border: activeTab === 'customers' ? '1px solid var(--neu-rim)' : '1px solid transparent',
+                background: activeTab === 'customers' ? 'var(--bg-card)' : 'transparent',
+                color: activeTab === 'customers' ? 'var(--omni-red)' : 'var(--text-secondary)',
+                boxShadow: activeTab === 'customers' ? 'var(--neu-flat-sm)' : 'none',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease',
+                transition: 'all 0.18s ease',
               }}
             >
-              <Search size={15} />
-              <span>Live AI Search</span>
+              <Users size={15} />
+              <span>Customers</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('checklist')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 16px',
+                borderRadius: '11px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                border: activeTab === 'checklist' ? '1px solid var(--neu-rim)' : '1px solid transparent',
+                background: activeTab === 'checklist' ? 'var(--bg-card)' : 'transparent',
+                color: activeTab === 'checklist' ? 'var(--omni-red)' : 'var(--text-secondary)',
+                boxShadow: activeTab === 'checklist' ? 'var(--neu-flat-sm)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.18s ease',
+              }}
+            >
+              <ListChecks size={15} />
+              <span>To-Do Checklist</span>
             </button>
           </nav>
+
+          {/* Dedicated Separate To-Do Checklist Feature Launcher */}
+          <Link
+            href="/checklist"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              padding: '8px 16px',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, #4f46e5, #4338ca)',
+              color: '#ffffff',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              textDecoration: 'none',
+              boxShadow: 'var(--neu-flat-sm)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              transition: 'all 0.18s ease',
+            }}
+            title="Open Standalone Sourcing & Order To-Do Checklist Feature"
+          >
+            <CheckSquare size={15} />
+            <span>To-Do Checklist</span>
+            <ExternalLink size={12} style={{ opacity: 0.85 }} />
+          </Link>
+
+          {/* Dedicated Separate Excel Record System Launcher */}
+          <Link
+            href="/orders"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              padding: '8px 16px',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, #107c41, #0c6133)',
+              color: '#ffffff',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              textDecoration: 'none',
+              boxShadow: 'var(--neu-flat-sm)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              transition: 'all 0.18s ease',
+            }}
+            title="Open Separate Excel Orders Record System"
+          >
+            <FileSpreadsheet size={15} />
+            <span>Excel Record System</span>
+            <ExternalLink size={12} style={{ opacity: 0.85 }} />
+          </Link>
 
           {/* Right Tools: Rate Badge, Theme Switcher, Community */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -375,10 +515,11 @@ export default function Home() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                padding: '6px 10px',
-                borderRadius: '8px',
+                padding: '7px 12px',
+                borderRadius: '12px',
                 background: 'var(--bg-surface)',
-                border: '1px solid var(--border-color)',
+                border: '1px solid var(--neu-rim)',
+                boxShadow: showRateSettings ? 'var(--neu-pressed)' : 'var(--neu-flat-sm)',
                 color: 'var(--text-secondary)',
                 fontSize: '0.78rem',
                 fontWeight: 600,
@@ -399,20 +540,24 @@ export default function Home() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                width: '36px',
-                height: '36px',
-                borderRadius: '8px',
+                width: '38px',
+                height: '38px',
+                borderRadius: '12px',
                 background: 'var(--bg-surface)',
-                border: '1px solid var(--border-color)',
+                border: '1px solid var(--neu-rim)',
+                boxShadow: 'var(--neu-flat-sm)',
                 color: 'var(--text-primary)',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease',
+                transition: 'all 0.18s ease',
               }}
               title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} theme`}
               aria-label="Toggle color theme"
             >
               {theme === 'dark' ? <Sun size={17} style={{ color: '#fbbf24' }} /> : <Moon size={17} style={{ color: '#6366f1' }} />}
             </button>
+
+            {/* User Account / Sign In Modal */}
+            <AuthModal apiUrl={apiUrl} showToast={showToast} />
 
             {/* WhatsApp VIP Community Button */}
             <button
@@ -421,10 +566,11 @@ export default function Home() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                padding: '6px 12px',
-                borderRadius: '8px',
-                background: 'rgba(16, 185, 129, 0.12)',
+                padding: '7px 14px',
+                borderRadius: '12px',
+                background: 'var(--bg-surface)',
                 border: '1px solid rgba(16, 185, 129, 0.3)',
+                boxShadow: 'var(--neu-flat-sm)',
                 color: '#10b981',
                 fontSize: '0.78rem',
                 fontWeight: 700,
@@ -508,13 +654,93 @@ export default function Home() {
         )}
       </header>
 
+      {/* UNIVERSAL CUSTOMER PROFILE & ORDER SEARCH (HOME PAGE HERO STRIP) */}
+      <div style={{
+        maxWidth: '1280px',
+        margin: '1.25rem auto 0 auto',
+        padding: '0 1.5rem',
+        width: '100%',
+        boxSizing: 'border-box',
+        position: 'relative',
+        zIndex: 40,
+      }}>
+        <div style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--neu-rim)',
+          borderRadius: '20px',
+          padding: '1.2rem 1.5rem',
+          boxShadow: 'var(--neu-flat-sm)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.85rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '10px',
+                background: 'rgba(239, 68, 68, 0.12)',
+                color: 'var(--omni-red)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: 'var(--neu-flat-sm)'
+              }}>
+                <Sparkles size={16} />
+              </div>
+              <div>
+                <div style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>Universal Customer Profile & Order Search</span>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px', background: 'var(--omni-red)', color: '#ffffff' }}>
+                    UNIVERSAL
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                  Locate customer by Phone Number to input order details, or search by Name or Address to open profile.
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveTab('customers')}
+              style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--neu-rim)',
+                borderRadius: '10px',
+                padding: '6px 14px',
+                color: 'var(--omni-red)',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: 'var(--neu-flat-sm)',
+                transition: 'all 0.18s ease'
+              }}
+            >
+              <Users size={14} />
+              <span>Open Customer Manager ➔</span>
+            </button>
+          </div>
+
+          <UniversalCustomerSearch
+            apiUrl={apiUrl}
+            onSelectCustomer={handleHomeSelectCustomer}
+            onOpenNewOrder={handleHomeOpenNewOrder}
+            onCreateNewCustomer={handleHomeCreateCustomer}
+            showToast={showToast}
+          />
+        </div>
+      </div>
+
       {/* MAIN VIEW CONTENT AREA (Totally separate, individual parts) */}
       <main style={{ flex: 1, padding: '2rem 0' }}>
         {activeTab === 'categories' && (
           <CategoryProductManager
             onSelectForCalculator={handleSendToCalculator}
             onAddToList={handleAddToList}
-            onSearchInAiHub={handleSearchInAiHub}
             rmbRate={rmbRate}
             freightRate={freightRate}
             freightUnit={freightUnit}
@@ -567,18 +793,103 @@ export default function Home() {
           />
         )}
 
-        {activeTab === 'search' && (
-          <AiSourcingHub
-            onAddToList={handleAddToList}
-            onSelectForCalculator={handleSendToCalculator}
-            rmbRate={rmbRate}
-            freightRate={freightRate}
-            freightUnit={freightUnit}
-            initialQuery={aiSearchQuery}
-            onResetInitialQuery={() => setAiSearchQuery('')}
+        {activeTab === 'customers' && (
+          <CustomerManager
+            apiUrl={apiUrl}
+            productListItems={listItems}
+            showToast={showToast}
+          />
+        )}
+
+        {activeTab === 'orders' && (
+          <OrdersManager
+            apiUrl={process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}
+            showToast={showToast}
+            onOpenOrderInBuilder={(order) => {
+              handleUpdateListItems(order.items || []);
+              setActiveTab('list');
+              showToast(`📂 Loaded "${order.name}" into Product List Builder`);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onCreateNewOrder={() => {
+              setActiveTab('list');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
+        )}
+
+        {activeTab === 'checklist' && (
+          <SourcingChecklistManager
+            apiUrl={process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}
+            showToast={showToast}
           />
         )}
       </main>
+
+      {/* HOME-LEVEL CUSTOMER PROFILE & ORDER MODALS */}
+      {homeProfileCustomer && (
+        <CustomerProfileModal
+          isOpen={!!homeProfileCustomer}
+          onClose={() => setHomeProfileCustomer(null)}
+          customer={homeProfileCustomer}
+          onUpdateProfile={async (cid, payload) => {
+            const updated = await customerApi.updateCustomer(apiUrl, cid, payload);
+            setHomeProfileCustomer(updated);
+          }}
+          onAddNewOrder={(cust) => {
+            setHomeOrderCustomer(cust);
+            setHomeOrderToEdit(null);
+          }}
+          onEditOrder={(ord) => {
+            setHomeOrderCustomer(homeProfileCustomer);
+            setHomeOrderToEdit(ord);
+          }}
+          onToggleOrderStatus={async (ord, isDel, isCan) => {
+            await customerApi.updateCustomerOrder(apiUrl, homeProfileCustomer.id, ord.id, {
+              is_delivered: isDel,
+              is_cancelled: isCan
+            });
+            const refreshed = await customerApi.getCustomer(apiUrl, homeProfileCustomer.id);
+            setHomeProfileCustomer(refreshed);
+            showToast(isDel ? '📦 Marked as Delivered!' : (isCan ? '❌ Marked as Cancelled!' : '🔄 Order updated.'));
+          }}
+          onDeleteOrder={async (ordId) => {
+            await customerApi.deleteCustomerOrder(apiUrl, homeProfileCustomer.id, ordId);
+            const refreshed = await customerApi.getCustomer(apiUrl, homeProfileCustomer.id);
+            setHomeProfileCustomer(refreshed);
+            showToast('🗑️ Order removed from profile.');
+          }}
+          onEditCustomerProfile={(cust) => {
+            setActiveTab('customers');
+            setHomeProfileCustomer(null);
+          }}
+          showToast={showToast}
+        />
+      )}
+
+      {homeOrderCustomer && (
+        <CustomerOrderModal
+          isOpen={!!homeOrderCustomer}
+          onClose={() => {
+            setHomeOrderCustomer(null);
+            setHomeOrderToEdit(null);
+          }}
+          customer={homeOrderCustomer}
+          orderToEdit={homeOrderToEdit}
+          onSaveOrder={handleHomeSaveOrder}
+          showToast={showToast}
+        />
+      )}
+
+      <CustomerFormModal
+        isOpen={homeShowAddCustomer}
+        onClose={() => setHomeShowAddCustomer(false)}
+        editingCustomer={null}
+        groups={customerGroups}
+        prefilledQuery={homePrefillQuery}
+        onSave={handleHomeSaveCustomer}
+        isSaving={savingCustomer}
+      />
 
       {/* MINIMALIST COMPACT FOOTER */}
       <footer style={{

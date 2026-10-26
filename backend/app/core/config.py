@@ -29,9 +29,12 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # Auth
-    JWT_SECRET_KEY: str = "sourceiq_super_secret_jwt_key_32bytes_min"
+    JWT_SECRET_KEY: str = "c18d25f42dfce78bbad8e33f2fac17b908f388f09c9c9ab1e66f3c5bc3860397"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+
+    # CORS
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     model_config = SettingsConfigDict(
         env_file=[".env", "../.env"],

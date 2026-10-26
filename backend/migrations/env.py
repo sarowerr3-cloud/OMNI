@@ -24,9 +24,11 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
+import socket
 from backend.app.core.config import get_settings
 from backend.app.db.base import Base
 from backend.app.models.user import User  # noqa: F401
+from backend.app.models.customer import Customer, CustomerOrder  # noqa: F401
 
 settings = get_settings()
 db_url = settings.DATABASE_URL
@@ -34,6 +36,14 @@ if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
 elif db_url.startswith("postgresql://") and "+asyncpg" not in db_url:
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+if "@postgres:" in db_url or "@postgres/" in db_url:
+    try:
+        socket.gethostbyname("postgres")
+    except socket.gaierror:
+        backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        local_db_path = os.path.join(backend_dir, "test.db").replace("\\", "/")
+        db_url = f"sqlite+aiosqlite:///{local_db_path}"
 
 config.set_main_option("sqlalchemy.url", db_url)
 target_metadata = Base.metadata
