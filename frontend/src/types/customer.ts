@@ -8,6 +8,8 @@ export interface CustomerOrder {
   weight_unit: 'kg' | 'gm';
   price: number;
   quantity: number;
+  delivery_cost?: number;
+  packing_cost?: number;
   total_amount: number;
   advance_payment: number;
   remaining_balance: number;
@@ -29,6 +31,8 @@ export interface CustomerOrderPayload {
   weight_unit?: 'kg' | 'gm';
   price: number;
   quantity?: number;
+  delivery_cost?: number;
+  packing_cost?: number;
   total_amount?: number;
   advance_payment?: number;
   remaining_balance?: number;
@@ -51,6 +55,8 @@ export interface Customer {
   category: string;
   city?: string;
   preferred_contact: string;
+  default_delivery_cost?: number;
+  default_packing_cost?: number;
   orders: CustomerOrder[];
   total_orders: number;
   total_spent: number;
@@ -72,6 +78,8 @@ export interface CustomerPayload {
   category?: string;
   city?: string;
   preferred_contact?: string;
+  default_delivery_cost?: number;
+  default_packing_cost?: number;
 }
 
 export interface CustomerGroup {

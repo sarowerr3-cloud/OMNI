@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { UserPlus, X, Phone, MapPin, FileText, User } from 'lucide-react';
+import { UserPlus, X, Phone, MapPin, FileText, User, Truck, Box } from 'lucide-react';
 import { Customer, CustomerGroup, CustomerPayload } from '@/types/customer';
 import { inputStyle, labelStyle, buttonActionStyle } from './customerStyles';
 
@@ -31,6 +31,8 @@ export default function CustomerFormModal({
   const [category, setCategory] = useState('Electronics');
   const [city, setCity] = useState('Dhaka');
   const [address, setAddress] = useState('');
+  const [defaultDeliveryCost, setDefaultDeliveryCost] = useState('');
+  const [defaultPackingCost, setDefaultPackingCost] = useState('');
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -42,6 +44,16 @@ export default function CustomerFormModal({
       setCategory(editingCustomer.category || 'Electronics');
       setCity(editingCustomer.city || 'Dhaka');
       setAddress(editingCustomer.address || '');
+      setDefaultDeliveryCost(
+        editingCustomer.default_delivery_cost !== undefined && editingCustomer.default_delivery_cost !== null
+          ? String(editingCustomer.default_delivery_cost)
+          : ''
+      );
+      setDefaultPackingCost(
+        editingCustomer.default_packing_cost !== undefined && editingCustomer.default_packing_cost !== null
+          ? String(editingCustomer.default_packing_cost)
+          : ''
+      );
       setNotes(editingCustomer.notes || '');
     } else {
       // Check if prefilledQuery is a phone number or name
@@ -53,6 +65,8 @@ export default function CustomerFormModal({
       setCategory('Electronics');
       setCity('Dhaka');
       setAddress('');
+      setDefaultDeliveryCost('');
+      setDefaultPackingCost('');
       setNotes('');
     }
   }, [editingCustomer, groups, prefilledQuery, isOpen]);
@@ -69,6 +83,8 @@ export default function CustomerFormModal({
       category: category.trim(),
       city: city.trim() || 'Dhaka',
       address: address.trim() || null,
+      default_delivery_cost: defaultDeliveryCost ? parseFloat(defaultDeliveryCost) : 0,
+      default_packing_cost: defaultPackingCost ? parseFloat(defaultPackingCost) : 0,
       notes: notes.trim() || null,
       preferred_contact: 'whatsapp'
     });
@@ -258,6 +274,115 @@ export default function CustomerFormModal({
                 <option value="Rangpur">Rangpur</option>
                 <option value="Mymensingh">Mymensingh</option>
               </select>
+            </div>
+          </div>
+
+          {/* Local Delivery Cost & Packing Cost Default Options */}
+          <div
+            style={{
+              padding: '14px',
+              borderRadius: '14px',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Truck size={15} style={{ color: '#0284c7' }} />
+                <span>Shipping & Packaging Rates (BDT)</span>
+              </div>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                Auto-fills on new orders
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              {/* Local Delivery Cost */}
+              <div>
+                <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <Truck size={13} style={{ color: '#0284c7' }} />
+                  <span>Local Delivery Cost (৳)</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={defaultDeliveryCost}
+                  onChange={(e) => setDefaultDeliveryCost(e.target.value)}
+                  placeholder="e.g. 70 or 130"
+                  style={inputStyle}
+                />
+                <div style={{ display: 'flex', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'Inside Dhaka ৳70', val: '70' },
+                    { label: 'Outside Dhaka ৳130', val: '130' },
+                    { label: 'Free ৳0', val: '0' },
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => setDefaultDeliveryCost(preset.val)}
+                      style={{
+                        padding: '3px 8px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-color)',
+                        background: defaultDeliveryCost === preset.val ? 'rgba(2, 132, 199, 0.2)' : 'var(--bg-surface)',
+                        color: defaultDeliveryCost === preset.val ? '#38bdf8' : 'var(--text-secondary)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Packing Cost */}
+              <div>
+                <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <Box size={13} style={{ color: '#d97706' }} />
+                  <span>Packing Cost (৳)</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={defaultPackingCost}
+                  onChange={(e) => setDefaultPackingCost(e.target.value)}
+                  placeholder="e.g. 50 or 30"
+                  style={inputStyle}
+                />
+                <div style={{ display: 'flex', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'Carton Box ৳50', val: '50' },
+                    { label: 'Bubble Wrap ৳30', val: '30' },
+                    { label: 'Free ৳0', val: '0' },
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => setDefaultPackingCost(preset.val)}
+                      style={{
+                        padding: '3px 8px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-color)',
+                        background: defaultPackingCost === preset.val ? 'rgba(217, 119, 6, 0.2)' : 'var(--bg-surface)',
+                        color: defaultPackingCost === preset.val ? '#fbbf24' : 'var(--text-secondary)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 

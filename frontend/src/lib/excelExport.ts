@@ -1,6 +1,8 @@
 import * as XLSX from 'xlsx';
 import { ProductItem, SavedProductList } from '@/components/ProductListBuilder';
 import { Customer, CustomerOrder } from '@/types/customer';
+import { ExtractedProductData } from '@/types/screenshotExtractor';
+
 
 /**
  * Calculates optimal column widths based on maximum string lengths in the rows.
@@ -575,7 +577,14 @@ function buildTemplateWorksheet(
     const lineWeightGrams = weightGrams;
     const lineWBdt = Math.round(lineWeightGrams * weightRate);
 
-    const lineTotal = lineBDT + lineWBdt + localDelivery + packgCharge;
+    const effectiveDelivery = order.delivery_cost !== undefined && order.delivery_cost !== null
+      ? Number(order.delivery_cost)
+      : localDelivery;
+    const effectivePacking = order.packing_cost !== undefined && order.packing_cost !== null
+      ? Number(order.packing_cost)
+      : packgCharge;
+
+    const lineTotal = lineBDT + lineWBdt + effectiveDelivery + effectivePacking;
     const aPay = Number(order.advance_payment || 0);
     const due = Math.max(0, lineTotal - aPay);
 
@@ -601,8 +610,8 @@ function buildTemplateWorksheet(
       lineWeightGrams,
       weightRate,
       lineWBdt,
-      localDelivery,
-      packgCharge,
+      effectiveDelivery,
+      effectivePacking,
       lineTotal,
       aPay,
       due,
@@ -854,3 +863,59 @@ export function exportSingleCustomerOrdersToExcel(
 
   XLSX.writeFile(wb, filename);
 }
+
+/**
+ * Export extracted screenshot product analysis to a beautifully formatted Excel (.xlsx) file.
+ */
+export function exportExtractedProductToExcel(
+  product: ExtractedProductData,
+  customFilename?: string
+): void {
+  const wb = XLSX.utils.book_new();
+
+  const exchangeRate = product.exchangeRate || 17.5;
+  const priceCNY = product.priceCNY || 0;
+  const priceBDT = product.priceBDT || Math.round(priceCNY * exchangeRate * 100) / 100;
+  const hasWeight = typeof product.baseWeightKg === 'number' && product.baseWeightKg > 0;
+  const baseWeightKg = hasWeight ? product.baseWeightKg : null;
+  const finalWeightKg = product.finalWeightKg || (hasWeight && baseWeightKg ? Math.round(baseWeightKg * 1.2 * 1000) / 1000 : null);
+  const colorsText = Array.isArray(product.colors) ? product.colors.join(', ') : 'Standard';
+
+  const sheetData: (string | number)[][] = [
+    ['OMNI AI VISION - SMART SCREENSHOT EXTRACTOR REPORT'],
+    ['Generated Date:', new Date().toLocaleString()],
+    ['Source Platform:', product.platformDetected || '1688 / AliExpress / PDD'],
+    ['AI Vision Engine:', 'Google Gemini Vision (@google/genai)'],
+    [],
+    [
+      'Field Name',
+      'Extracted Value',
+      'Unit / Currency',
+      'Business Logic / Notes'
+    ],
+    ['Product Title (English)', product.productName || 'Untitled Product', 'Text', 'Translated from Chinese via Gemini AI'],
+    ['Available Colors / Variants', colorsText, 'Variants List', 'Extracted color and model options'],
+    ['Original Price (CNY)', priceCNY, 'CNY ¥', 'Extracted factory unit price'],
+    ['Exchange Rate (CNY ➔ BDT)', exchangeRate, 'BDT/CNY', 'Configurable conversion rate'],
+    ['Converted Unit Price (BDT)', priceBDT, 'BDT ৳', 'CNY Price × Exchange Rate'],
+    ['Base Weight', hasWeight ? baseWeightKg! : 'Not specified on screenshot', hasWeight ? 'kg' : '-', hasWeight ? 'Extracted from screenshot specs' : 'Left empty for manual entry'],
+    ['Base Weight (Grams)', hasWeight ? Math.round(baseWeightKg! * 1000) : 'Not specified', hasWeight ? 'gm' : '-', hasWeight ? 'Converted to grams' : 'Left empty for manual entry'],
+    ['Final Calculated Weight', hasWeight ? finalWeightKg! : 'Manual Entry Required', hasWeight ? 'kg' : '-', hasWeight ? 'Base Weight × 1.2 (+20% safety factor)' : 'No automatic weight applied'],
+    ['Final Calculated Weight (Grams)', hasWeight ? Math.round(finalWeightKg! * 1000) : 'Manual Entry Required', hasWeight ? 'gm' : '-', hasWeight ? 'Used for live freight & landed cost' : 'Fill manually in Add Product'],
+    ['Product Image Bounding Box', product.boundingBoxForProductImage ? `ymin:${product.boundingBoxForProductImage.ymin}%, xmin:${product.boundingBoxForProductImage.xmin}%, ymax:${product.boundingBoxForProductImage.ymax}%, xmax:${product.boundingBoxForProductImage.xmax}%` : 'Full Screenshot', 'Coordinates', 'Normalized percentage coordinates'],
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(sheetData);
+  ws['!cols'] = calculateColumnWidths(sheetData);
+  XLSX.utils.book_append_sheet(wb, ws, 'Extracted Product');
+
+  const sanitizeTitle = (product.productName || 'product')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/gi, '_')
+    .slice(0, 30);
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const filename = customFilename || `omni_extracted_${sanitizeTitle}_${dateStr}.xlsx`;
+
+  XLSX.writeFile(wb, filename);
+}
+

@@ -305,7 +305,10 @@ class CustomerService:
         for ord_item in raw_orders:
             if isinstance(ord_item, dict):
                 # Ensure calculations
-                tot = float(ord_item.get("total_amount", 0.0) or (float(ord_item.get("price", 0.0)) * int(ord_item.get("quantity", 1) or 1)))
+                subtot = float(ord_item.get("price", 0.0) or 0.0) * int(ord_item.get("quantity", 1) or 1)
+                del_cost = float(ord_item.get("delivery_cost", 0.0) or 0.0)
+                pack_cost = float(ord_item.get("packing_cost", 0.0) or 0.0)
+                tot = float(ord_item.get("total_amount", 0.0) or (subtot + del_cost + pack_cost))
                 adv = float(ord_item.get("advance_payment", 0.0) or 0.0)
                 rem = max(0.0, round(tot - adv, 2))
                 
@@ -327,6 +330,8 @@ class CustomerService:
                 else:
                     stat = "active"
 
+                ord_item["delivery_cost"] = del_cost
+                ord_item["packing_cost"] = pack_cost
                 ord_item["total_amount"] = tot
                 ord_item["advance_payment"] = adv
                 ord_item["remaining_balance"] = rem
@@ -505,6 +510,8 @@ class CustomerService:
             "category": data.category.strip() if data.category else "Electronics",
             "city": data.city.strip() if data.city else "Dhaka",
             "preferred_contact": data.preferred_contact or "whatsapp",
+            "default_delivery_cost": float(data.default_delivery_cost or 0.0),
+            "default_packing_cost": float(data.default_packing_cost or 0.0),
             "orders": [],
             "total_orders": 0,
             "total_spent": 0.0,
@@ -574,7 +581,10 @@ class CustomerService:
 
         qty = order_data.quantity if (order_data.quantity and order_data.quantity > 0) else 1
         unit_price = float(order_data.price)
-        total_amt = float(order_data.total_amount) if order_data.total_amount is not None else round(unit_price * qty, 2)
+        del_cost = float(order_data.delivery_cost or 0.0)
+        pack_cost = float(order_data.packing_cost or 0.0)
+        product_subtotal = round(unit_price * qty, 2)
+        total_amt = float(order_data.total_amount) if order_data.total_amount is not None else round(product_subtotal + del_cost + pack_cost, 2)
         adv_payment = float(order_data.advance_payment or 0.0)
         rem_balance = max(0.0, round(total_amt - adv_payment, 2))
 
@@ -606,6 +616,8 @@ class CustomerService:
             weight_unit=order_data.weight_unit or "kg",
             price=unit_price,
             quantity=qty,
+            delivery_cost=del_cost,
+            packing_cost=pack_cost,
             total_amount=total_amt,
             advance_payment=adv_payment,
             remaining_balance=rem_balance,
@@ -658,11 +670,14 @@ class CustomerService:
         # Re-evaluate calculations
         qty = int(current_order.get("quantity", 1) or 1)
         unit_price = float(current_order.get("price", 0.0))
+        del_cost = float(current_order.get("delivery_cost", 0.0) or 0.0)
+        pack_cost = float(current_order.get("packing_cost", 0.0) or 0.0)
+        product_subtotal = round(unit_price * qty, 2)
         
         if "total_amount" in updates and updates["total_amount"] is not None:
             tot = float(updates["total_amount"])
         else:
-            tot = round(unit_price * qty, 2)
+            tot = round(product_subtotal + del_cost + pack_cost, 2)
             
         adv = float(current_order.get("advance_payment", 0.0) or 0.0)
         rem = max(0.0, round(tot - adv, 2))

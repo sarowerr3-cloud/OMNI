@@ -878,6 +878,8 @@ export default function Home() {
           orderToEdit={homeOrderToEdit}
           onSaveOrder={handleHomeSaveOrder}
           showToast={showToast}
+          apiUrl={apiUrl}
+          defaultExchangeRate="17.5"
         />
       )}
 

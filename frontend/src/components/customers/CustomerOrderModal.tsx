@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X,
   Package,
@@ -19,10 +19,18 @@ import {
   User,
   Phone,
   MapPin,
-  Check
+  Check,
+  UploadCloud,
+  Camera,
+  Trash2,
+  Loader2,
+  Truck,
+  Box
 } from 'lucide-react';
 import { Customer, CustomerOrder, CustomerOrderPayload } from '@/types/customer';
 import { inputStyle, labelStyle, buttonActionStyle } from './customerStyles';
+import SmartScreenshotExtractor from '@/components/SmartScreenshotExtractor';
+import { ExtractedProductData } from '@/types/screenshotExtractor';
 
 interface CustomerOrderModalProps {
   isOpen: boolean;
@@ -31,34 +39,9 @@ interface CustomerOrderModalProps {
   orderToEdit?: CustomerOrder | null;
   onSaveOrder: (orderPayload: CustomerOrderPayload, orderId?: string) => Promise<void>;
   showToast: (msg: string) => void;
+  apiUrl?: string;
+  defaultExchangeRate?: string | number;
 }
-
-const SAMPLE_PRESETS = [
-  {
-    name: 'HK9 Ultra 2 AMOLED Smart Watch',
-    image: 'https://images.unsplash.com/photo-1579586337278-3befd40fd17a?w=400&auto=format&fit=crop&q=80',
-    link: 'https://detail.1688.com/offer/732948210344.html',
-    weight: 0.35,
-    unit: 'kg' as const,
-    price: 2850
-  },
-  {
-    name: 'ANC TWS Wireless Earbuds Pro 2',
-    image: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=400&auto=format&fit=crop&q=80',
-    link: 'https://detail.1688.com/offer/684920194821.html',
-    weight: 0.18,
-    unit: 'kg' as const,
-    price: 1450
-  },
-  {
-    name: '65W GaN Dual Type-C Fast Charger',
-    image: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=400&auto=format&fit=crop&q=80',
-    link: 'https://detail.1688.com/offer/718294104928.html',
-    weight: 0.22,
-    unit: 'kg' as const,
-    price: 1150
-  }
-];
 
 export default function CustomerOrderModal({
   isOpen,
@@ -66,22 +49,31 @@ export default function CustomerOrderModal({
   customer,
   orderToEdit,
   onSaveOrder,
-  showToast
+  showToast,
+  apiUrl,
+  defaultExchangeRate = '17.5'
 }: CustomerOrderModalProps) {
   // Form State
   const [productName, setProductName] = useState<string>('');
   const [productImage, setProductImage] = useState<string>('');
   const [productLink, setProductLink] = useState<string>('');
-  const [weight, setWeight] = useState<string>('0.35');
+  const [weight, setWeight] = useState<string>('');
   const [weightUnit, setWeightUnit] = useState<'kg' | 'gm'>('kg');
-  const [price, setPrice] = useState<string>('2500');
+  const [price, setPrice] = useState<string>('');
   const [quantity, setQuantity] = useState<number>(1);
-  const [advancePayment, setAdvancePayment] = useState<string>('1000');
+  const [deliveryCost, setDeliveryCost] = useState<string>('');
+  const [packingCost, setPackingCost] = useState<string>('');
+  const [advancePayment, setAdvancePayment] = useState<string>('');
   const [dateTime, setDateTime] = useState<string>('');
   const [isDelivered, setIsDelivered] = useState<boolean>(false);
   const [isCancelled, setIsCancelled] = useState<boolean>(false);
   const [notes, setNotes] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
+
+  // Local Image Upload & Extractor State
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
+  const [isImageDragging, setIsImageDragging] = useState<boolean>(false);
+  const [isExtractingDirectImage, setIsExtractingDirectImage] = useState<boolean>(false);
 
   // Initialize or reset form values
   useEffect(() => {
@@ -89,11 +81,13 @@ export default function CustomerOrderModal({
       setProductName(orderToEdit.product_name || '');
       setProductImage(orderToEdit.product_image || '');
       setProductLink(orderToEdit.product_link || '');
-      setWeight(String(orderToEdit.weight ?? 0.35));
+      setWeight(orderToEdit.weight !== undefined && orderToEdit.weight !== null ? String(orderToEdit.weight) : '');
       setWeightUnit(orderToEdit.weight_unit || 'kg');
-      setPrice(String(orderToEdit.price ?? 0));
+      setPrice(String(orderToEdit.price ?? ''));
       setQuantity(orderToEdit.quantity || 1);
-      setAdvancePayment(String(orderToEdit.advance_payment ?? 0));
+      setDeliveryCost(orderToEdit.delivery_cost !== undefined && orderToEdit.delivery_cost !== null ? String(orderToEdit.delivery_cost) : '');
+      setPackingCost(orderToEdit.packing_cost !== undefined && orderToEdit.packing_cost !== null ? String(orderToEdit.packing_cost) : '');
+      setAdvancePayment(orderToEdit.advance_payment !== undefined && orderToEdit.advance_payment !== null ? String(orderToEdit.advance_payment) : '');
       setDateTime(orderToEdit.date_time || getCurrentDateTime());
       setIsDelivered(!!orderToEdit.is_delivered);
       setIsCancelled(!!orderToEdit.is_cancelled);
@@ -102,17 +96,27 @@ export default function CustomerOrderModal({
       setProductName('');
       setProductImage('');
       setProductLink('');
-      setWeight('0.35');
+      setWeight('');
       setWeightUnit('kg');
-      setPrice('2500');
+      setPrice('');
       setQuantity(1);
-      setAdvancePayment('1000');
+      setDeliveryCost(
+        customer?.default_delivery_cost !== undefined && customer?.default_delivery_cost !== null && customer.default_delivery_cost > 0
+          ? String(customer.default_delivery_cost)
+          : ''
+      );
+      setPackingCost(
+        customer?.default_packing_cost !== undefined && customer?.default_packing_cost !== null && customer.default_packing_cost > 0
+          ? String(customer.default_packing_cost)
+          : ''
+      );
+      setAdvancePayment('');
       setDateTime(getCurrentDateTime());
       setIsDelivered(false);
       setIsCancelled(false);
       setNotes('');
     }
-  }, [orderToEdit, isOpen]);
+  }, [orderToEdit, isOpen, customer]);
 
   // Current formatted date/time helper: YYYY-MM-DD HH:mm
   function getCurrentDateTime(): string {
@@ -121,12 +125,176 @@ export default function CustomerOrderModal({
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
+  // Handle auto-fill from AI Smart Screenshot Extractor
+  const handleAutoFillFromScreenshot = useCallback((data: ExtractedProductData) => {
+    if (data.productName) {
+      setProductName(data.productName);
+    }
+
+    // Set cropped thumbnail or original uploaded screenshot
+    const primaryImg = data.croppedImageDataUrl || data.originalImageDataUrl;
+    if (primaryImg) {
+      setProductImage(primaryImg);
+    }
+
+    // Converted price in BDT
+    if (typeof data.priceBDT === 'number' && data.priceBDT > 0) {
+      setPrice(String(Math.round(data.priceBDT)));
+    } else if (typeof data.priceCNY === 'number' && data.priceCNY > 0) {
+      const activeRate = Number(data.exchangeRate || defaultExchangeRate || 17.5);
+      setPrice(String(Math.round(data.priceCNY * activeRate)));
+    }
+
+    // Weight Logic:
+    // Only set weight if explicitly identified in screenshot (with 1.2x safety factor).
+    // If not found in screenshot, leave it empty for manual entry!
+    const hasWeight = typeof data.finalWeightKg === 'number' && data.finalWeightKg > 0;
+    if (hasWeight && data.finalWeightKg) {
+      if (weightUnit === 'gm') {
+        setWeight(String(Math.round(data.finalWeightKg * 1000)));
+      } else {
+        setWeight(String(data.finalWeightKg));
+      }
+    } else {
+      // User rule: No automatic base weight - leave empty for manual input!
+      setWeight('');
+    }
+
+    // Notes / Specs (Colors)
+    if (data.colors && data.colors.length > 0) {
+      const colorSpec = `Colors: ${data.colors.join(', ')}`;
+      setNotes((prev) => (prev ? `${prev} | ${colorSpec}` : colorSpec));
+    }
+
+    if (data.platformDetected && !productLink) {
+      setNotes((prev) => (prev ? `${prev} | Sourced from ${data.platformDetected}` : `Sourced from ${data.platformDetected}`));
+    }
+  }, [defaultExchangeRate, productLink, weightUnit]);
+
+  // Process a local File for product image
+  const processLocalImageFile = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showToast('⚠️ Please upload a valid image file (PNG, JPG, WEBP).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = (e.target?.result as string) || '';
+      setProductImage(dataUrl);
+      showToast('📸 Product photo uploaded! Click "⚡ Extract with AI" to auto-fill details.');
+    };
+    reader.readAsDataURL(file);
+  }, [showToast]);
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      processLocalImageFile(e.target.files[0]);
+    }
+  };
+
+  // Direct AI extraction for the currently loaded product image
+  const handleDirectAiExtract = async () => {
+    if (!productImage) {
+      showToast('⚠️ Please upload or paste a product image/screenshot first.');
+      return;
+    }
+
+    setIsExtractingDirectImage(true);
+    showToast('🤖 Analyzing image with Google Gemini Vision...');
+
+    try {
+      const formData = new FormData();
+      if (productImage.startsWith('data:')) {
+        const res = await fetch(productImage);
+        const blob = await res.blob();
+        formData.append('file', blob, 'product_screenshot.png');
+      } else {
+        formData.append('imageUrl', productImage);
+      }
+
+      const activeRate = Number(defaultExchangeRate || 17.5);
+      formData.append('cnyRate', String(activeRate));
+      formData.append('exchangeRate', String(activeRate));
+
+      let response: Response;
+      try {
+        response = await fetch('/api/products/analyze-screenshot', {
+          method: 'POST',
+          body: formData,
+        });
+        if (!response.ok && apiUrl) {
+          response = await fetch(`${apiUrl}/api/products/analyze-screenshot`, {
+            method: 'POST',
+            body: formData,
+          });
+        }
+      } catch (err) {
+        if (apiUrl) {
+          response = await fetch(`${apiUrl}/api/products/analyze-screenshot`, {
+            method: 'POST',
+            body: formData,
+          });
+        } else {
+          throw err;
+        }
+      }
+
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || errJson.detail || 'Failed to extract screenshot data.');
+      }
+
+      const extracted: ExtractedProductData = await response.json();
+      extracted.exchangeRate = activeRate;
+      extracted.originalImageDataUrl = productImage;
+      handleAutoFillFromScreenshot(extracted);
+
+      const hasWeight = typeof extracted.finalWeightKg === 'number' && extracted.finalWeightKg > 0;
+      showToast(
+        hasWeight
+          ? `✨ Extracted: "${extracted.productName.slice(0, 30)}..." | ৳${extracted.priceBDT} | 1.2× Weight: ${extracted.finalWeightKg}kg`
+          : `✨ Extracted: "${extracted.productName.slice(0, 30)}..." | ৳${extracted.priceBDT} (Weight left empty as requested)`
+      );
+    } catch (err: any) {
+      console.error('Direct extraction failed:', err);
+      showToast(`❌ ${err.message || 'AI extraction failed. Please try again.'}`);
+    } finally {
+      setIsExtractingDirectImage(false);
+    }
+  };
+
+  // Clipboard paste listener (Ctrl+V) when modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const file = items[i].getAsFile();
+          if (file) {
+            processLocalImageFile(file);
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [isOpen, processLocalImageFile]);
+
   if (!isOpen) return null;
 
   // Real-time calculations
   const numPrice = parseFloat(price) || 0;
   const numQty = quantity > 0 ? quantity : 1;
-  const totalAmount = Math.round(numPrice * numQty);
+  const productSubtotal = Math.round(numPrice * numQty);
+  const numDelivery = parseFloat(deliveryCost) || 0;
+  const numPacking = parseFloat(packingCost) || 0;
+  const totalAmount = Math.round(productSubtotal + numDelivery + numPacking);
   const numAdvance = parseFloat(advancePayment) || 0;
   const remainingBalance = Math.max(0, totalAmount - numAdvance);
 
@@ -138,15 +306,6 @@ export default function CustomerOrderModal({
     paymentStatus = 'partial';
   }
 
-  // Handle preset quick selection
-  const handleApplyPreset = (preset: typeof SAMPLE_PRESETS[0]) => {
-    setProductName(preset.name);
-    setProductImage(preset.image);
-    setProductLink(preset.link);
-    setWeight(String(preset.weight));
-    setWeightUnit(preset.unit);
-    setPrice(String(preset.price));
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,6 +324,8 @@ export default function CustomerOrderModal({
         weight_unit: weightUnit,
         price: numPrice,
         quantity: numQty,
+        delivery_cost: numDelivery,
+        packing_cost: numPacking,
         total_amount: totalAmount,
         advance_payment: numAdvance,
         remaining_balance: remainingBalance,
@@ -289,41 +450,63 @@ export default function CustomerOrderModal({
         {/* MODAL BODY (SCROLLABLE WITH INDEPENDENT SECTIONS) */}
         <form onSubmit={handleSubmit} style={{ overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
-          {/* Quick Preset Selector */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                ⚡ Quick Auto-Fill Samples
-              </span>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {SAMPLE_PRESETS.map((p, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => handleApplyPreset(p)}
+          {/* AI-Powered Smart Screenshot Extractor (1688, AliExpress, Pinduoduo, Taobao) */}
+          <div style={{ position: 'relative' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '8px',
+                padding: '0 4px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div
                   style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '6px',
+                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
-                    padding: '6px 12px',
-                    borderRadius: '10px',
-                    fontSize: '0.76rem',
-                    fontWeight: 600,
-                    background: 'var(--bg-surface)',
-                    border: '1px solid var(--neu-rim)',
-                    boxShadow: 'var(--neu-flat-sm)',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
+                    justifyContent: 'center',
+                    boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)',
                   }}
                 >
-                  <Sparkles size={12} style={{ color: 'var(--omni-red)' }} />
-                  <span>{p.name.slice(0, 22)}...</span>
-                  <span style={{ color: 'var(--omni-red)', fontWeight: 700 }}>৳{p.price}</span>
-                </button>
-              ))}
+                  <Sparkles size={14} color="#ffffff" />
+                </div>
+                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.3px' }}>
+                  AI SMART SCREENSHOT EXTRACTOR
+                </span>
+                <span
+                  style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '10px',
+                    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                    color: '#38bdf8',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                  }}
+                >
+                  1688 • Taobao • AliExpress • PDD
+                </span>
+              </div>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                Press <kbd style={{ padding: '2px 5px', borderRadius: '4px', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-color)', color: 'var(--omni-red)', fontWeight: 700 }}>Ctrl + V</kbd> to paste
+              </span>
             </div>
+
+            <SmartScreenshotExtractor
+              apiUrl={apiUrl}
+              defaultExchangeRate={defaultExchangeRate || '17.5'}
+              onAutoFill={handleAutoFillFromScreenshot}
+              showToast={showToast}
+              isOpenByDefault={true}
+            />
           </div>
+
 
           {/* SECTION 1: PRODUCT DETAILS */}
           <div
@@ -337,9 +520,43 @@ export default function CustomerOrderModal({
               gap: '14px',
             }}
           >
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Package size={16} style={{ color: 'var(--omni-red)' }} />
-              <span>1. Product Information</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Package size={16} style={{ color: 'var(--omni-red)' }} />
+                <span>1. Product Information</span>
+              </div>
+              {productImage && (
+                <button
+                  type="button"
+                  onClick={handleDirectAiExtract}
+                  disabled={isExtractingDirectImage}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                    color: '#38bdf8',
+                    border: '1px solid rgba(56, 189, 248, 0.35)',
+                    cursor: isExtractingDirectImage ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {isExtractingDirectImage ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" />
+                      <span>Extracting with AI...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={13} />
+                      <span>⚡ Auto-Fill from Image</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
 
             {/* Product Name */}
@@ -355,50 +572,208 @@ export default function CustomerOrderModal({
               />
             </div>
 
-            {/* Product Image URL & Preview */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', alignItems: 'flex-start' }}>
-              <div>
-                <label style={labelStyle}>Product Image URL</label>
-                <div style={{ position: 'relative' }}>
-                  <ImageIcon size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
-                  <input
-                    type="url"
-                    value={productImage}
-                    onChange={(e) => setProductImage(e.target.value)}
-                    placeholder="https://... image link"
-                    style={{ ...inputStyle, paddingLeft: '36px' }}
-                  />
-                </div>
+            {/* Product Image Upload & Preview */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <label style={{ ...labelStyle, margin: 0 }}>Product Photo / Screenshot</label>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                  Local File • Remote URL • Paste (Ctrl+V)
+                </span>
               </div>
 
-              {/* Thumbnail Preview */}
+              {/* Hidden native file input */}
+              <input
+                type="file"
+                ref={imageFileInputRef}
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleImageFileChange}
+              />
+
               <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsImageDragging(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  setIsImageDragging(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsImageDragging(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    processLocalImageFile(e.dataTransfer.files[0]);
+                  }
+                }}
                 style={{
-                  width: '60px',
-                  height: '60px',
-                  borderRadius: '12px',
-                  border: '1px solid var(--border-color)',
-                  background: 'var(--bg-surface)',
                   display: 'flex',
+                  gap: '14px',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                  marginTop: '22px',
-                  flexShrink: 0,
+                  background: isImageDragging ? 'rgba(239, 68, 68, 0.08)' : 'var(--bg-surface)',
+                  border: isImageDragging ? '2px dashed var(--omni-red)' : '1px solid var(--border-color)',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  transition: 'all 0.2s ease',
                 }}
               >
-                {productImage ? (
-                  <img
-                    src={productImage}
-                    alt="Preview"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <ImageIcon size={22} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
-                )}
+                {/* Clickable Thumbnail Preview */}
+                <div
+                  onClick={() => imageFileInputRef.current?.click()}
+                  title="Click to browse image from your device"
+                  style={{
+                    width: '72px',
+                    height: '72px',
+                    borderRadius: '12px',
+                    border: '1px dashed var(--neu-rim)',
+                    backgroundColor: 'var(--bg-card)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    overflow: 'hidden',
+                    position: 'relative',
+                    flexShrink: 0,
+                    transition: 'all 0.2s ease',
+                    boxShadow: 'var(--neu-flat-sm)',
+                  }}
+                >
+                  {productImage ? (
+                    <>
+                      <img
+                        src={productImage}
+                        alt="Product Preview"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          opacity: 0,
+                          transition: 'opacity 0.2s ease',
+                          color: '#ffffff',
+                          fontSize: '0.62rem',
+                          fontWeight: 700,
+                          gap: '2px',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+                        onMouseLeave={(e) => (e.currentTarget.style.opacity = '0')}
+                      >
+                        <Camera size={16} />
+                        <span>Change</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', color: 'var(--text-muted)' }}>
+                      <UploadCloud size={22} style={{ color: 'var(--omni-red)' }} />
+                      <span style={{ fontSize: '0.65rem', fontWeight: 700 }}>Upload</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* URL Input & Direct Actions */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ position: 'relative' }}>
+                    <ImageIcon size={15} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-muted)' }} />
+                    <input
+                      type="text"
+                      value={productImage}
+                      onChange={(e) => setProductImage(e.target.value)}
+                      placeholder="Paste image URL OR click 'Browse Image' below..."
+                      style={{ ...inputStyle, paddingLeft: '32px', fontSize: '0.8rem', padding: '8px 12px 8px 32px' }}
+                    />
+                  </div>
+
+                  {/* Button row */}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => imageFileInputRef.current?.click()}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '6px',
+                        fontSize: '0.76rem',
+                        fontWeight: 700,
+                        backgroundColor: '#ef4444',
+                        color: '#ffffff',
+                        border: 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 2px 8px rgba(239, 68, 68, 0.35)',
+                      }}
+                    >
+                      <UploadCloud size={14} />
+                      Browse Image
+                    </button>
+
+                    {productImage && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleDirectAiExtract}
+                          disabled={isExtractingDirectImage}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '6px',
+                            fontSize: '0.76rem',
+                            fontWeight: 700,
+                            backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                            color: '#38bdf8',
+                            border: '1px solid rgba(56, 189, 248, 0.4)',
+                            cursor: isExtractingDirectImage ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          {isExtractingDirectImage ? (
+                            <>
+                              <Loader2 size={13} className="animate-spin" />
+                              <span>Analyzing...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles size={13} />
+                              <span>⚡ Extract with AI</span>
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setProductImage('')}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            fontSize: '0.74rem',
+                            fontWeight: 600,
+                            backgroundColor: 'transparent',
+                            color: 'var(--text-muted)',
+                            border: '1px solid var(--border-color)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <X size={12} />
+                          Clear Photo
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -439,7 +814,12 @@ export default function CustomerOrderModal({
             {/* Weight and Weight Unit */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: '12px' }}>
               <div>
-                <label style={labelStyle}>Weight</label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <label style={{ ...labelStyle, margin: 0 }}>Weight</label>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                    (Auto-calculated only if in screenshot)
+                  </span>
+                </div>
                 <div style={{ position: 'relative' }}>
                   <Scale size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
                   <input
@@ -448,10 +828,13 @@ export default function CustomerOrderModal({
                     min="0"
                     value={weight}
                     onChange={(e) => setWeight(e.target.value)}
-                    placeholder="0.35"
+                    placeholder="Leave empty if unknown"
                     style={{ ...inputStyle, paddingLeft: '36px' }}
                   />
                 </div>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                  * No automatic base weight is added. Enter manually if weight is not in screenshot.
+                </span>
               </div>
 
               <div>
@@ -577,7 +960,7 @@ export default function CustomerOrderModal({
                     required
                     value={price}
                     onChange={(e) => setPrice(e.target.value)}
-                    placeholder="2500"
+                    placeholder="e.g. 1500"
                     style={{ ...inputStyle, paddingLeft: '28px' }}
                   />
                 </div>
@@ -594,6 +977,135 @@ export default function CustomerOrderModal({
                 />
               </div>
             </div>
+
+            {/* Local Delivery Cost & Packing Cost Boxes */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              {/* Local Delivery Cost Box */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <label style={{ ...labelStyle, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Truck size={14} style={{ color: '#38bdf8' }} />
+                    <span>Local Delivery Cost</span>
+                  </label>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Courier / Transport</span>
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '12px', top: '10px', fontWeight: 700, color: 'var(--text-muted)' }}>৳</span>
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    value={deliveryCost}
+                    onChange={(e) => setDeliveryCost(e.target.value)}
+                    placeholder="e.g. 120"
+                    style={{ ...inputStyle, paddingLeft: '28px' }}
+                  />
+                </div>
+                {/* Delivery presets */}
+                <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'Inside Dhaka (৳70)', val: '70' },
+                    { label: 'Outside Dhaka (৳130)', val: '130' },
+                    { label: 'Free (৳0)', val: '0' },
+                  ].map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => setDeliveryCost(p.val)}
+                      style={{
+                        padding: '2px 7px',
+                        borderRadius: '6px',
+                        border: deliveryCost === p.val ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                        background: deliveryCost === p.val ? 'rgba(56, 189, 248, 0.15)' : 'var(--bg-surface)',
+                        color: deliveryCost === p.val ? '#38bdf8' : 'var(--text-muted)',
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Packing Cost Box */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <label style={{ ...labelStyle, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Box size={14} style={{ color: '#fbbf24' }} />
+                    <span>Packing Cost</span>
+                  </label>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Box / Bubble Wrap</span>
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '12px', top: '10px', fontWeight: 700, color: 'var(--text-muted)' }}>৳</span>
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    value={packingCost}
+                    onChange={(e) => setPackingCost(e.target.value)}
+                    placeholder="e.g. 50"
+                    style={{ ...inputStyle, paddingLeft: '28px' }}
+                  />
+                </div>
+                {/* Packing presets */}
+                <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'Carton Box (৳50)', val: '50' },
+                    { label: 'Bubble Wrap (৳30)', val: '30' },
+                    { label: 'Free (৳0)', val: '0' },
+                  ].map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => setPackingCost(p.val)}
+                      style={{
+                        padding: '2px 7px',
+                        borderRadius: '6px',
+                        border: packingCost === p.val ? '1px solid #fbbf24' : '1px solid var(--border-color)',
+                        background: packingCost === p.val ? 'rgba(251, 191, 36, 0.15)' : 'var(--bg-surface)',
+                        color: packingCost === p.val ? '#fbbf24' : 'var(--text-muted)',
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Real-time Cost Breakdown Pill */}
+            {(numDelivery > 0 || numPacking > 0 || productSubtotal > 0) && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 12px',
+                  borderRadius: '10px',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid var(--border-color)',
+                  fontSize: '0.74rem',
+                  color: 'var(--text-secondary)',
+                  flexWrap: 'wrap',
+                  gap: '6px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span>Item Subtotal: <strong>৳{productSubtotal.toLocaleString()}</strong></span>
+                  {numDelivery > 0 && <span style={{ color: '#38bdf8' }}>+ Delivery: <strong>৳{numDelivery}</strong></span>}
+                  {numPacking > 0 && <span style={{ color: '#fbbf24' }}>+ Packing: <strong>৳{numPacking}</strong></span>}
+                </div>
+                <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
+                  Total: ৳{totalAmount.toLocaleString()}
+                </div>
+              </div>
+            )}
 
             {/* Advance Payment Made */}
             <div>

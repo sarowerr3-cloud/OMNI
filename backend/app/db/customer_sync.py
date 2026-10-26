@@ -1,5 +1,5 @@
 import logging
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.models.customer import Customer as CustomerModel, CustomerOrder as CustomerOrderModel
 from backend.app.services.customer_service import customer_service
@@ -7,9 +7,37 @@ from backend.app.services.customer_service import customer_service
 logger = logging.getLogger(__name__)
 
 
+async def ensure_customer_columns(db: AsyncSession) -> None:
+    """Ensure newly introduced columns exist in customers and customer_orders tables."""
+    for col in ["default_delivery_cost", "default_packing_cost"]:
+        try:
+            await db.execute(text(f"SELECT {col} FROM customers LIMIT 1"))
+        except Exception:
+            await db.rollback()
+            try:
+                await db.execute(text(f"ALTER TABLE customers ADD COLUMN {col} FLOAT DEFAULT 0.0"))
+                await db.commit()
+            except Exception as alter_err:
+                await db.rollback()
+                logger.debug(f"Could not add {col} to customers: {alter_err}")
+
+    for col in ["delivery_cost", "packing_cost"]:
+        try:
+            await db.execute(text(f"SELECT {col} FROM customer_orders LIMIT 1"))
+        except Exception:
+            await db.rollback()
+            try:
+                await db.execute(text(f"ALTER TABLE customer_orders ADD COLUMN {col} FLOAT DEFAULT 0.0"))
+                await db.commit()
+            except Exception as alter_err:
+                await db.rollback()
+                logger.debug(f"Could not add {col} to customer_orders: {alter_err}")
+
+
 async def sync_customers_to_db(db: AsyncSession) -> None:
     """Sync in-memory/JSON customers to database tables on startup if empty."""
     try:
+        await ensure_customer_columns(db)
         result = await db.execute(select(CustomerModel))
         existing = result.scalars().all()
         if not existing:
@@ -25,6 +53,8 @@ async def sync_customers_to_db(db: AsyncSession) -> None:
                     address=cust.address,
                     notes=cust.notes,
                     preferred_contact=cust.preferred_contact,
+                    default_delivery_cost=getattr(cust, 'default_delivery_cost', 0.0) or 0.0,
+                    default_packing_cost=getattr(cust, 'default_packing_cost', 0.0) or 0.0,
                     total_orders=cust.total_orders,
                     total_spent=cust.total_spent,
                     total_due=cust.total_due,
@@ -44,6 +74,8 @@ async def sync_customers_to_db(db: AsyncSession) -> None:
                         weight_unit=ord_item.weight_unit,
                         price=ord_item.price,
                         quantity=ord_item.quantity,
+                        delivery_cost=ord_item.delivery_cost,
+                        packing_cost=ord_item.packing_cost,
                         total_amount=ord_item.total_amount,
                         advance_payment=ord_item.advance_payment,
                         remaining_balance=ord_item.remaining_balance,

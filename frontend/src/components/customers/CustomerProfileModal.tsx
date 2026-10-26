@@ -24,7 +24,9 @@ import {
   Filter,
   Layers,
   FileSpreadsheet,
-  Download
+  Download,
+  Truck,
+  Box
 } from 'lucide-react';
 import { Customer, CustomerOrder, CustomerOrderPayload, CustomerPayload } from '@/types/customer';
 import { buttonActionStyle, inputStyle } from './customerStyles';
@@ -236,6 +238,44 @@ export default function CustomerProfileModal({
                     <span>{customer.address}</span>
                   </div>
                 )}
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '3px', fontSize: '0.76rem' }}>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      background: 'rgba(2, 132, 199, 0.12)',
+                      color: '#38bdf8',
+                      border: '1px solid rgba(2, 132, 199, 0.25)',
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                    }}
+                    title="Customer default local delivery rate"
+                  >
+                    <Truck size={12} />
+                    <span>Local Delivery: ৳{(customer.default_delivery_cost || 0).toLocaleString()}</span>
+                  </span>
+
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      background: 'rgba(217, 119, 6, 0.12)',
+                      color: '#fbbf24',
+                      border: '1px solid rgba(217, 119, 6, 0.25)',
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                    }}
+                    title="Customer default packing cost"
+                  >
+                    <Box size={12} />
+                    <span>Packing: ৳{(customer.default_packing_cost || 0).toLocaleString()}</span>
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -380,6 +420,25 @@ export default function CustomerProfileModal({
                 }}
               >
                 ৳{customer.total_due.toLocaleString()}
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '12px 14px',
+                borderRadius: '14px',
+                background: 'rgba(2, 132, 199, 0.08)',
+                border: '1px solid rgba(2, 132, 199, 0.25)',
+              }}
+            >
+              <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Truck size={12} /> Delivery & Packing
+              </div>
+              <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#38bdf8', marginTop: '2px' }}>
+                ৳{orders.reduce((sum, o) => sum + (o.delivery_cost || 0) + (o.packing_cost || 0), 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                Del: ৳{orders.reduce((sum, o) => sum + (o.delivery_cost || 0), 0).toLocaleString()} • Pack: ৳{orders.reduce((sum, o) => sum + (o.packing_cost || 0), 0).toLocaleString()}
               </div>
             </div>
           </div>
@@ -713,7 +772,7 @@ export default function CustomerProfileModal({
                           </div>
 
                           {/* Weight & Price Details */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
                             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                               <Scale size={13} style={{ color: 'var(--text-muted)' }} />
                               <span>{order.weight} {order.weight_unit}</span>
@@ -722,6 +781,20 @@ export default function CustomerProfileModal({
                             <span>Qty: <strong>{order.quantity || 1}</strong></span>
                             <span>•</span>
                             <span>Unit: ৳{order.price.toLocaleString()}</span>
+                            {((order.delivery_cost || 0) > 0 || (order.packing_cost || 0) > 0) && (
+                              <>
+                                <span>•</span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: '#0284c7', fontWeight: 600 }}>
+                                  <Truck size={12} />
+                                  <span>Delivery: ৳{(order.delivery_cost || 0).toLocaleString()}</span>
+                                </span>
+                                <span>•</span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: '#d97706', fontWeight: 600 }}>
+                                  <Box size={12} />
+                                  <span>Packing: ৳{(order.packing_cost || 0).toLocaleString()}</span>
+                                </span>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -730,7 +803,7 @@ export default function CustomerProfileModal({
                       <div
                         style={{
                           display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))',
                           gap: '8px',
                           background: 'var(--bg-surface)',
                           padding: '10px 14px',
@@ -743,6 +816,29 @@ export default function CustomerProfileModal({
                           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Total Amount</div>
                           <div style={{ fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
                             ৳{order.total_amount.toLocaleString()}
+                          </div>
+                          {((order.delivery_cost || 0) > 0 || (order.packing_cost || 0) > 0) && (
+                            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginTop: '1px' }}>
+                              Item: ৳{(order.price * (order.quantity || 1)).toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <div style={{ fontSize: '0.68rem', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <Truck size={11} /> Local Delivery
+                          </div>
+                          <div style={{ fontWeight: 800, color: '#0284c7', marginTop: '2px' }}>
+                            ৳{(order.delivery_cost || 0).toLocaleString()}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ fontSize: '0.68rem', color: '#d97706', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <Box size={11} /> Packing Cost
+                          </div>
+                          <div style={{ fontWeight: 800, color: '#d97706', marginTop: '2px' }}>
+                            ৳{(order.packing_cost || 0).toLocaleString()}
                           </div>
                         </div>
 

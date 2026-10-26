@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     # Gemini API Settings
     GEMINI_API_KEY: Optional[str] = None
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3-flash-preview"
 
     # Claude API Settings (Anthropic)
     CLAUDE_API_KEY: Optional[str] = None

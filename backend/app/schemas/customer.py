@@ -12,6 +12,8 @@ class CustomerOrder(BaseModel):
     weight_unit: str = Field("kg", description="Weight unit, e.g. 'kg' or 'gm'")
     price: float = Field(0.0, description="Unit price or base item price in BDT")
     quantity: int = Field(1, description="Quantity ordered")
+    delivery_cost: float = Field(0.0, description="Local delivery / courier cost in BDT")
+    packing_cost: float = Field(0.0, description="Packaging materials / handling cost in BDT")
     total_amount: float = Field(0.0, description="Total amount in BDT")
     advance_payment: float = Field(0.0, description="Advance payment made in BDT")
     remaining_balance: float = Field(0.0, description="Remaining balance in BDT (total_amount - advance_payment)")
@@ -33,6 +35,8 @@ class CustomerOrderCreate(BaseModel):
     weight_unit: Optional[str] = Field("kg", description="Weight unit ('kg' or 'gm')")
     price: float = Field(..., description="Unit price or base item price in BDT")
     quantity: Optional[int] = Field(1, description="Quantity ordered")
+    delivery_cost: Optional[float] = Field(0.0, description="Local delivery / courier cost in BDT")
+    packing_cost: Optional[float] = Field(0.0, description="Packaging materials cost in BDT")
     total_amount: Optional[float] = Field(None, description="Total amount (auto-calculated if omitted)")
     advance_payment: Optional[float] = Field(0.0, description="Advance payment made in BDT")
     remaining_balance: Optional[float] = Field(None, description="Remaining balance (auto-calculated if omitted)")
@@ -52,6 +56,8 @@ class CustomerOrderUpdate(BaseModel):
     weight_unit: Optional[str] = None
     price: Optional[float] = None
     quantity: Optional[int] = None
+    delivery_cost: Optional[float] = None
+    packing_cost: Optional[float] = None
     total_amount: Optional[float] = None
     advance_payment: Optional[float] = None
     remaining_balance: Optional[float] = None
@@ -73,6 +79,8 @@ class CustomerBase(BaseModel):
     category: str = Field("Electronics", description="Product category interest")
     city: Optional[str] = Field("Dhaka", description="City / Region in Bangladesh")
     preferred_contact: str = Field("whatsapp", description="Preferred contact channel (whatsapp, sms, phone)")
+    default_delivery_cost: Optional[float] = Field(0.0, description="Default local delivery / courier cost in BDT for this customer")
+    default_packing_cost: Optional[float] = Field(0.0, description="Default packaging cost in BDT for this customer")
 
 
 class CustomerCreate(CustomerBase):
@@ -89,6 +97,8 @@ class CustomerUpdate(BaseModel):
     category: Optional[str] = None
     city: Optional[str] = None
     preferred_contact: Optional[str] = None
+    default_delivery_cost: Optional[float] = None
+    default_packing_cost: Optional[float] = None
     total_orders: Optional[int] = None
 
 

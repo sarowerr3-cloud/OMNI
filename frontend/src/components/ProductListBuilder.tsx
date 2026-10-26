@@ -46,6 +46,9 @@ import {
 } from 'lucide-react';
 import { exportSingleOrderToExcel, exportAllOrdersToExcel } from '@/lib/excelExport';
 import { getAuthHeaders } from '@/services/customerApi';
+import SmartScreenshotExtractor from '@/components/SmartScreenshotExtractor';
+import { ExtractedProductData } from '@/types/screenshotExtractor';
+
 
 
 export interface ChecklistTask {
@@ -529,6 +532,90 @@ export default function ProductListBuilder({
     setNewImages([]);
     setNewQuantity('');
     setNewPlatform('Pinduoduo');
+  };
+
+  // Handler for Smart Screenshot Extractor auto-fill
+  const handleAutoFillFromScreenshot = (data: ExtractedProductData) => {
+    if (data.productName) {
+      setNewTitle(data.productName);
+    }
+    if (typeof data.priceCNY === 'number' && data.priceCNY > 0) {
+      setNewPrice(String(data.priceCNY));
+      setNewCurrency('RMB');
+    }
+    if (data.exchangeRate && data.exchangeRate > 0) {
+      setRmbRate(String(data.exchangeRate));
+    }
+
+    // Weight: ONLY if explicit weight was found on screenshot, calculate and fill 1.2x weight.
+    // If no weight was found in screenshot, leave it empty for manual input.
+    const hasWeight = typeof data.finalWeightKg === 'number' && data.finalWeightKg > 0;
+    if (hasWeight && data.finalWeightKg) {
+      if (newWeightUnit === 'gm') {
+        setNewWeightVal(String(Math.round(data.finalWeightKg * 1000)));
+      } else {
+        setNewWeightVal(String(data.finalWeightKg));
+      }
+    } else {
+      // User requirement: No automatic/base weight - leave empty for manual input!
+      setNewWeightVal('');
+    }
+
+    // Available Colors / Variants
+    if (data.colors && data.colors.length > 0) {
+      const colorSpec = `Colors: ${data.colors.join(', ')}`;
+      setNewDetails((prev) => (prev ? `${prev} | ${colorSpec}` : colorSpec));
+    }
+
+    // Cropped or uploaded product image thumbnail
+    const primaryImg = data.croppedImageDataUrl || data.originalImageDataUrl;
+    if (primaryImg) {
+      setNewImages((prev) => [primaryImg, ...prev.filter((img) => img !== primaryImg)]);
+    }
+
+    if (data.platformDetected) {
+      setNewPlatform(data.platformDetected);
+    }
+  };
+
+  // Handler to add extracted screenshot directly to the product list
+  const handleAddDirectlyToListFromScreenshot = (data: ExtractedProductData) => {
+    const priceNum = data.priceCNY || 0;
+    const rateNum = Number(data.exchangeRate || rmbRate || 17.5);
+    const priceBdt = Math.round(priceNum * rateNum * 100) / 100;
+    const hasWeight = typeof data.finalWeightKg === 'number' && data.finalWeightKg > 0;
+    const finalWeightKg = hasWeight && data.finalWeightKg ? data.finalWeightKg : 0;
+    const unitWeightPrice = finalWeightKg > 0 ? calculateUnitWeightPriceBdt(finalWeightKg, freightRate, freightUnit) : 0;
+
+    const primaryImg = data.croppedImageDataUrl || data.originalImageDataUrl || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?auto=format&fit=crop&w=400&q=80';
+
+    const newItem: ProductItem = {
+      id: `prod_ai_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      title: data.productName || 'Imported Sourced Product',
+      details: data.colors && data.colors.length > 0 ? `Colors: ${data.colors.join(', ')}` : '',
+      price: priceNum,
+      currency: 'RMB',
+      price_bdt: priceBdt,
+      weight_kg: Number(finalWeightKg.toFixed(3)),
+      quantity: 1,
+      weight_price_bdt: Number(unitWeightPrice.toFixed(2)),
+      line_weight_price_bdt: Number(unitWeightPrice.toFixed(2)),
+      combined_unit_price_bdt: Number((priceBdt + unitWeightPrice).toFixed(2)),
+      combined_line_total_bdt: Number((priceBdt + unitWeightPrice).toFixed(2)),
+      image_url: primaryImg,
+      images: [primaryImg],
+      platform: data.platformDetected || '1688',
+      paid_amount: 0,
+      due_amount: Number((priceBdt + unitWeightPrice).toFixed(2)),
+      payment_status: 'unpaid'
+    };
+
+    onUpdateItems([...items, newItem]);
+    showToast(
+      hasWeight
+        ? `✅ Added "${newItem.title}" with 1.2× packaging weight to product list!`
+        : `✅ Added "${newItem.title}" to product list (weight left empty for manual update)!`
+    );
   };
 
   // Helper calculations for items
@@ -2333,6 +2420,16 @@ export default function ProductListBuilder({
             </h2>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #a1a1aa)' }}>Products are added step-by-step to the list below</span>
           </div>
+
+          {/* AI-Powered Smart Screenshot Extractor (1688, AliExpress, Pinduoduo) */}
+          <SmartScreenshotExtractor
+            apiUrl={apiUrl}
+            defaultExchangeRate={rmbRate || '17.5'}
+            onAutoFill={handleAutoFillFromScreenshot}
+            onAddDirectlyToList={handleAddDirectlyToListFromScreenshot}
+            showToast={showToast}
+            isOpenByDefault={true}
+          />
 
           <form onSubmit={handleAddProduct} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
             {/* Title */}

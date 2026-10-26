@@ -1004,6 +1004,8 @@ export default function CustomerManager({
           orderToEdit={orderToEdit}
           onSaveOrder={handleSaveOrder}
           showToast={showToast}
+          apiUrl={apiUrl}
+          defaultExchangeRate="17.5"
         />
       )}
 
