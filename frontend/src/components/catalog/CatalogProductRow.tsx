@@ -133,7 +133,7 @@ export default function CatalogProductRow({
                 color: 'var(--text-muted)',
               }}
             >
-              {p.supplier_platform || '1688'}
+              {p.platform || '1688'}
             </span>
             {p.product_url && (
               <a
@@ -183,7 +183,7 @@ export default function CatalogProductRow({
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Source</div>
           <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-            {p.currency === 'CNY' ? '¥' : '$'}{p.source_price.toFixed(2)}
+            {p.currency === 'RMB' ? '¥' : '$'}{p.source_price.toFixed(2)}
           </div>
         </div>
 

@@ -24,18 +24,43 @@ interface RawSelectedFeatures {
 }
 
 interface RawGeminiExtraction {
-  productName?: string;
+  isProductScreenshot?: boolean;
+  productName?: string | null;
   hasSelectedFeatures?: boolean;
-  selectedFeatures?: RawSelectedFeatures;
+  selectedFeatures?: RawSelectedFeatures | null;
   colors?: string[];
-  priceCNY?: number;
+  priceCNY?: number | null;
   baseWeightKg?: number | null;
-  boundingBoxForProductImage?: BoundingBox;
+  boundingBoxForProductImage?: BoundingBox | null;
   platform?: string;
 }
 
 const EXTRACTION_SYSTEM_PROMPT = `You are an expert AI sourcing vision analyst for Chinese e-commerce platforms (1688.com, AliExpress, Pinduoduo, Taobao, Weidian).
-Analyze the provided product screenshot and extract structured information with extreme accuracy.
+Analyze the provided image and extract structured information with extreme accuracy and ZERO hallucination or fabrication.
+
+CRITICAL NON-PRODUCT / RANDOM IMAGE DETECTION RULE:
+- First, evaluate whether the provided image is genuinely an e-commerce product screenshot or product listing page (such as 1688, Taobao, Pinduoduo, AliExpress, or similar online shop).
+- If the image is NOT an e-commerce product screenshot (for example: a personal photo, scenery, random document, meme, chart, app UI, receipt without product details, or unrelated graphic):
+  * "isProductScreenshot": false
+  * "productName": "No data found"
+  * "hasSelectedFeatures": false
+  * "selectedFeatures": null
+  * "colors": []
+  * "priceCNY": null
+  * "baseWeightKg": null
+  * "boundingBoxForProductImage": null
+  * "platform": "Other"
+  * Return this immediately without fabricating any product, price, or details!
+
+CRITICAL PRICE EXTRACTION RULE (ABSOLUTE NO FABRICATION):
+- ONLY extract "priceCNY" if a specific price in Chinese Yuan (¥ / RMB) or unit price is CLEARLY and EXPLICITLY visible on the screenshot.
+- Look for numeric values adjacent to "¥", "￥", "RMB", "元", or in the primary price display block.
+- If no price is visibly shown or legible on the screenshot, you MUST set "priceCNY": null.
+- NEVER invent, estimate, guess, or default to any price! If missing, return null.
+
+CRITICAL PRODUCT TITLE / NAME RULE:
+- "productName": Extract and translate the product title into clear, attractive, professional English. Remove spammy supplier keywords ("工厂直销", "跨境热销", "一件代发").
+- If there is NO visible product title, or the image is not a product, return "No data found". NEVER invent or assume a product title.
 
 CRITICAL FEATURE SELECTION RULES (COLOR, SIZE, MODEL, STYLE, SHAPE, COMBINATIONS):
 - In Chinese e-commerce screenshots, users often select specific options before purchasing. You must identify ONLY the specific features that are ACTIVELY SELECTED or INDICATED in the screenshot.
@@ -57,7 +82,7 @@ HOW TO RECOGNIZE WHAT IS ACTIVELY SELECTED (VISUAL ANCHORS):
 - DO NOT list all unselected options! Never output options that are NOT selected.
 - If an option is selected, translate it into clean, professional English.
 
-STRICT NEGATIVE RULE:
+STRICT NEGATIVE RULE FOR FEATURES:
 - If NO feature is selected, highlighted, or indicated in the screenshot (for instance, the screenshot only shows the main product photo, title, or all option chips are unselected/inactive):
   * "hasSelectedFeatures" MUST be false.
   * "selectedFeatures" fields (color, size, model, style, shape, combination) MUST all be null.
@@ -65,15 +90,14 @@ STRICT NEGATIVE RULE:
   * Do NOT invent, assume, or default to any variant!
 
 OTHER FIELDS:
-1. "productName": Translate the product title into clear, attractive, professional English. Remove spammy supplier keywords ("工厂直销", "跨境热销", "一件代发").
-2. "priceCNY": Extract the item price in Chinese Yuan (¥ / RMB). Return as a clean number (e.g. 45.5).
-3. "baseWeightKg": Extract the base product weight in kilograms ONLY if explicitly printed on the screenshot (e.g. "重量", "单件重量", "毛重", "500g" -> 0.5, "350克" -> 0.35, "1.2kg" -> 1.2). If NOT written anywhere on the image, you MUST return null.
-4. "boundingBoxForProductImage": Bounding box coordinates {ymin, xmin, ymax, xmax} in 0-100 percentage for the primary product showcase photo.
-5. "platform": Detect "1688", "AliExpress", "Pinduoduo", "Taobao", or "Other".
+- "baseWeightKg": Extract the base product weight in kilograms ONLY if explicitly printed on the screenshot (e.g. "重量", "单件重量", "毛重", "500g" -> 0.5, "350克" -> 0.35, "1.2kg" -> 1.2). If NOT written anywhere on the image, you MUST return null.
+- "boundingBoxForProductImage": Bounding box coordinates {ymin, xmin, ymax, xmax} in 0-100 percentage for the primary product showcase photo. If no product photo is present, return null.
+- "platform": Detect "1688", "AliExpress", "Pinduoduo", "Taobao", or "Other".
 
 You MUST strictly return a valid JSON object matching this schema:
 {
-  "productName": "English title",
+  "isProductScreenshot": true,
+  "productName": "English title or No data found",
   "hasSelectedFeatures": true,
   "selectedFeatures": {
     "color": "Matte Black",
@@ -158,14 +182,13 @@ export async function POST(req: NextRequest) {
     if (isValidKey && apiKey) {
       const ai = new GoogleGenAI({ apiKey });
 
-      // Fallback model chain in case of retirement (404) or capacity spikes (503)
+      // Fallback model chain prioritizing active, high-speed vision models
       const candidateModels = [
         process.env.GEMINI_MODEL,
         'gemini-3-flash-preview',
-        'gemini-3.8-flash',
-        'gemini-2.5-pro',
-        'gemini-flash-latest',
         'gemini-3.5-flash',
+        'gemini-3.8-flash',
+        'gemini-flash-latest',
       ].filter(Boolean) as string[];
 
       let lastError: any = null;
@@ -200,7 +223,7 @@ export async function POST(req: NextRequest) {
               extracted = JSON.parse(cleanJson);
             }
 
-            if (extracted && (extracted.productName || extracted.priceCNY !== undefined)) {
+            if (extracted && (extracted.isProductScreenshot !== undefined || extracted.productName || extracted.priceCNY !== undefined)) {
               usedModel = modelName;
               isAiLive = true;
               console.log(`[Gemini Vision] Successfully extracted with ${modelName}:`, extracted.productName);
@@ -218,18 +241,26 @@ export async function POST(req: NextRequest) {
         extracted = generateSmartFallback(file.name);
       }
     } else {
-      console.warn('GEMINI_API_KEY is not configured. Returning intelligent mock extraction.');
+      console.warn('GEMINI_API_KEY is not configured. Returning zero-hallucination mock extraction.');
       extracted = generateSmartFallback(file.name);
     }
 
-    // Business Logic Calculations
-    const priceCNY = typeof extracted.priceCNY === 'number' && extracted.priceCNY > 0 ? extracted.priceCNY : 45.5;
-    const priceBDT = Math.round(priceCNY * exchangeRate * 100) / 100;
+    // Business Logic Calculations (Zero Fabrication / Strict Verification)
+    const isProduct = extracted.isProductScreenshot !== false &&
+      Boolean(extracted.productName && extracted.productName.trim().toLowerCase() !== 'no data found');
+
+    // Price Calculation: ONLY accept explicit positive numbers; do NOT fallback to 45.5!
+    const priceCNY = (isProduct && typeof extracted.priceCNY === 'number' && extracted.priceCNY > 0)
+      ? extracted.priceCNY
+      : null;
+    const priceBDT = priceCNY !== null
+      ? Math.round(priceCNY * exchangeRate * 100) / 100
+      : null;
 
     // Weight Calculation:
     // Only extract and calculate weight if explicitly identified in the screenshot.
     // If not found, leave baseWeightKg, finalWeightKg, and finalWeightGm as null so the form field remains empty for manual input.
-    const baseWeightKg: number | null = (typeof extracted.baseWeightKg === 'number' && extracted.baseWeightKg > 0)
+    const baseWeightKg: number | null = (isProduct && typeof extracted.baseWeightKg === 'number' && extracted.baseWeightKg > 0)
       ? extracted.baseWeightKg
       : null;
     // Final Calculated Weight = Base Weight × 1.2 (+20% safety factor for packaging/carton)
@@ -243,46 +274,51 @@ export async function POST(req: NextRequest) {
     // Build Structured Selected Features (Color, Size, Model, Style, Shape, Combination)
     const rawSel = extracted.selectedFeatures || {};
     const summaryList: string[] = [];
-    if (rawSel.color) summaryList.push(`Color: ${rawSel.color}`);
-    if (rawSel.size) summaryList.push(`Size: ${rawSel.size}`);
-    if (rawSel.model) summaryList.push(`Model: ${rawSel.model}`);
-    if (rawSel.style) summaryList.push(`Style: ${rawSel.style}`);
-    if (rawSel.shape) summaryList.push(`Shape: ${rawSel.shape}`);
-    if (rawSel.combination) summaryList.push(`Combo: ${rawSel.combination}`);
+    if (isProduct) {
+      if (rawSel.color) summaryList.push(`Color: ${rawSel.color}`);
+      if (rawSel.size) summaryList.push(`Size: ${rawSel.size}`);
+      if (rawSel.model) summaryList.push(`Model: ${rawSel.model}`);
+      if (rawSel.style) summaryList.push(`Style: ${rawSel.style}`);
+      if (rawSel.shape) summaryList.push(`Shape: ${rawSel.shape}`);
+      if (rawSel.combination) summaryList.push(`Combo: ${rawSel.combination}`);
 
-    // If summaryList is empty but raw extracted.colors has items (without old generic placeholders), use them
-    if (summaryList.length === 0 && Array.isArray(extracted.colors) && extracted.colors.length > 0) {
-      extracted.colors.forEach((c) => {
-        if (c && !c.toLowerCase().includes('factory original') && !c.toLowerCase().includes('standard edition')) {
-          summaryList.push(c);
-        }
-      });
+      // If summaryList is empty but raw extracted.colors has items (without generic placeholders), use them
+      if (summaryList.length === 0 && Array.isArray(extracted.colors) && extracted.colors.length > 0) {
+        extracted.colors.forEach((c) => {
+          if (c && !c.toLowerCase().includes('factory original') && !c.toLowerCase().includes('standard edition') && !c.toLowerCase().includes('no features')) {
+            summaryList.push(c);
+          }
+        });
+      }
     }
 
-    const hasSelectedFeatures = extracted.hasSelectedFeatures !== undefined
+    const hasSelectedFeatures = isProduct && extracted.hasSelectedFeatures !== undefined
       ? Boolean(extracted.hasSelectedFeatures && summaryList.length > 0)
-      : summaryList.length > 0;
+      : Boolean(isProduct && summaryList.length > 0);
 
     const selectedFeatures = {
-      color: rawSel.color || null,
-      size: rawSel.size || null,
-      model: rawSel.model || null,
-      style: rawSel.style || null,
-      shape: rawSel.shape || null,
-      combination: rawSel.combination || null,
-      rawSelectedText: rawSel.rawSelectedText || null,
+      color: isProduct ? (rawSel.color || null) : null,
+      size: isProduct ? (rawSel.size || null) : null,
+      model: isProduct ? (rawSel.model || null) : null,
+      style: isProduct ? (rawSel.style || null) : null,
+      shape: isProduct ? (rawSel.shape || null) : null,
+      combination: isProduct ? (rawSel.combination || null) : null,
+      rawSelectedText: isProduct ? (rawSel.rawSelectedText || null) : null,
       summaryList: hasSelectedFeatures ? summaryList : [],
     };
 
-    const productName = extracted.productName?.trim() || 'Chinese E-Commerce Sourced Product';
+    const productName = isProduct
+      ? (extracted.productName?.trim() || 'No data found')
+      : 'No data found';
 
-    // Normalize bounding box to 0-100 percentage range
-    const rawBox = extracted.boundingBoxForProductImage;
-    const boundingBox = normalizeBoundingBox(rawBox);
+    // Normalize bounding box to 0-100 percentage range (only if real product photo detected)
+    const rawBox = isProduct ? extracted.boundingBoxForProductImage : undefined;
+    const boundingBox = rawBox ? normalizeBoundingBox(rawBox) : undefined;
 
-    const platform = (extracted.platform as any) || '1688';
+    const platform = (extracted.platform as any) || (isProduct ? '1688' : 'Other');
 
     return NextResponse.json({
+      isProductScreenshot: isProduct,
       productName,
       hasSelectedFeatures,
       selectedFeatures,
@@ -300,7 +336,7 @@ export async function POST(req: NextRequest) {
       modelUsed: usedModel,
       note: isAiLive 
         ? `Live extraction powered by Google Gemini Vision (${usedModel})` 
-        : 'Mock fallback demonstration',
+        : 'Zero-hallucination safe extraction',
     });
   } catch (error: any) {
     console.error('Error analyzing screenshot:', error);
@@ -350,60 +386,19 @@ function normalizeBoundingBox(rawBox?: BoundingBox): BoundingBox {
 }
 
 /**
- * High-quality fallback for environments without an active Gemini API key.
+ * Zero-hallucination fallback when AI models are unavailable or unconfigured.
+ * Strictly returns "No data found" and null price to prevent fabricated data.
  */
 function generateSmartFallback(filename: string): RawGeminiExtraction {
-  const lower = filename.toLowerCase();
-  if (lower.includes('watch') || lower.includes('smart')) {
-    return {
-      productName: 'Ultra 8 NFC Smart Watch with HD AMOLED Display & Waterproof Strap',
-      hasSelectedFeatures: true,
-      selectedFeatures: {
-        color: 'Midnight Black',
-        model: 'Ultra 8 Series',
-        combination: 'Standard 49mm + Orange Alpine Loop',
-        rawSelectedText: '已选: 黑色 + 橙色高山回环表带',
-      },
-      colors: ['Color: Midnight Black', 'Model: Ultra 8 Series', 'Combo: 49mm + Orange Alpine Loop'],
-      priceCNY: 48.0,
-      baseWeightKg: 0.16,
-      boundingBoxForProductImage: { ymin: 12, xmin: 15, ymax: 62, xmax: 85 },
-      platform: '1688',
-    };
-  } else if (lower.includes('shoe') || lower.includes('sneaker')) {
-    return {
-      productName: 'Breathable Lightweight Running Shoes Anti-Slip Sports Sneakers',
-      hasSelectedFeatures: true,
-      selectedFeatures: {
-        color: 'Triple Black',
-        size: '43 EU',
-        rawSelectedText: '已选: 纯黑透气款, 43码',
-      },
-      colors: ['Color: Triple Black', 'Size: 43 EU'],
-      priceCNY: 65.0,
-      baseWeightKg: 0.75,
-      boundingBoxForProductImage: { ymin: 15, xmin: 10, ymax: 68, xmax: 90 },
-      platform: 'Pinduoduo',
-    };
-  }
-
-  // If screenshot does not indicate specific selected options
   return {
-    productName: 'Multi-functional High Quality Consumer Electronics & Sourcing Item',
+    isProductScreenshot: false,
+    productName: 'No data found',
     hasSelectedFeatures: false,
-    selectedFeatures: {
-      color: null,
-      size: null,
-      model: null,
-      style: null,
-      shape: null,
-      combination: null,
-      rawSelectedText: null,
-    },
+    selectedFeatures: null,
     colors: [],
-    priceCNY: 45.5,
+    priceCNY: null,
     baseWeightKg: null,
-    boundingBoxForProductImage: { ymin: 12, xmin: 12, ymax: 60, xmax: 88 },
-    platform: '1688',
+    boundingBoxForProductImage: null,
+    platform: 'Other',
   };
 }

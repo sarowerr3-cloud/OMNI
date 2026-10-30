@@ -276,7 +276,13 @@ export default function SmartScreenshotExtractor({
       setExtractedData(data);
 
       if (showToast) {
-        showToast(`✨ Extracted: "${data.productName.slice(0, 32)}..." (${data.priceCNY} CNY ≈ ৳${data.priceBDT} BDT)`);
+        if (!data.isProductScreenshot || data.productName === 'No data found') {
+          showToast('⚠️ No product data found in this image.');
+        } else if (data.priceCNY !== null && data.priceBDT !== null) {
+          showToast(`✨ Extracted: "${data.productName.slice(0, 32)}..." (${data.priceCNY} CNY ≈ ৳${data.priceBDT} BDT)`);
+        } else {
+          showToast(`✨ Extracted: "${data.productName.slice(0, 32)}..." (No price found on screenshot)`);
+        }
       }
     } catch (err: any) {
       console.error('Failed to analyze screenshot:', err);
@@ -294,15 +300,24 @@ export default function SmartScreenshotExtractor({
    */
   const handleApplyToForm = () => {
     if (!extractedData) return;
+    if (!extractedData.isProductScreenshot || extractedData.productName === 'No data found') {
+      if (showToast) showToast('⚠️ No product data detected to auto-fill.');
+      return;
+    }
     onAutoFill(extractedData);
     setHasAutoFilled(true);
     const hasWeight = typeof extractedData.finalWeightKg === 'number' && extractedData.finalWeightKg > 0;
+    const hasPrice = typeof extractedData.priceCNY === 'number' && extractedData.priceCNY > 0;
     if (showToast) {
-      showToast(
-        hasWeight
-          ? '✅ Product title, price, variants, 1.2× weight, and cropped photo populated into form!'
-          : '✅ Product title, price, variants, and photo populated (Weight left empty for manual entry)!'
-      );
+      if (hasPrice && hasWeight) {
+        showToast('✅ Product title, price, variants, 1.2× weight, and photo populated into form!');
+      } else if (hasPrice && !hasWeight) {
+        showToast('✅ Product title, price, variants, and photo populated (Weight left empty for manual entry)!');
+      } else if (!hasPrice && hasWeight) {
+        showToast('✅ Product title, variants, 1.2× weight, and photo populated (Price left empty - no price found on screenshot)!');
+      } else {
+        showToast('✅ Product title, variants, and photo populated (Price & weight left empty for manual entry)!');
+      }
     }
   };
 
@@ -722,17 +737,28 @@ export default function SmartScreenshotExtractor({
                 {/* Result Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #27272a', paddingBottom: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <CheckCircle2 style={{ width: '18px', height: '18px', color: '#10b981' }} />
-                    <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#f8fafc' }}>
-                      AI Vision Extraction Complete
-                    </span>
+                    {extractedData.isProductScreenshot !== false && extractedData.productName !== 'No data found' ? (
+                      <>
+                        <CheckCircle2 style={{ width: '18px', height: '18px', color: '#10b981' }} />
+                        <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#f8fafc' }}>
+                          AI Vision Extraction Complete
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle style={{ width: '18px', height: '18px', color: '#ef4444' }} />
+                        <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#fca5a5' }}>
+                          Non-Product / No Data Detected
+                        </span>
+                      </>
+                    )}
                   </div>
                   <span
                     style={{
                       fontSize: '0.68rem',
                       fontWeight: 700,
-                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                      color: '#34d399',
+                      backgroundColor: extractedData.isProductScreenshot !== false ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                      color: extractedData.isProductScreenshot !== false ? '#34d399' : '#f87171',
                       padding: '2px 8px',
                       borderRadius: '10px',
                     }}
@@ -741,14 +767,41 @@ export default function SmartScreenshotExtractor({
                   </span>
                 </div>
 
+                {/* Non-Product Warning Banner if no data found */}
+                {(!extractedData.isProductScreenshot || extractedData.productName === 'No data found') && (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                      border: '1px solid rgba(239, 68, 68, 0.35)',
+                      color: '#fca5a5',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    <AlertCircle style={{ width: '16px', height: '16px', color: '#ef4444', flexShrink: 0 }} />
+                    <span>No e-commerce product or pricing details detected in this image. Please upload a clear product page screenshot.</span>
+                  </div>
+                )}
+
                 {/* Product Title (English) */}
                 <div>
                   <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>
                     Translated English Title:
                   </div>
-                  <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px', lineHeight: '1.3' }}>
-                    {extractedData.productName}
-                  </div>
+                  {extractedData.productName && extractedData.productName !== 'No data found' ? (
+                    <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px', lineHeight: '1.3' }}>
+                      {extractedData.productName}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '4px', fontSize: '0.84rem', fontWeight: 700, color: '#ef4444' }}>
+                      <AlertCircle size={14} /> No data found
+                    </div>
+                  )}
                 </div>
 
                 {/* Visual Thumbnail & Variants Row */}
@@ -831,7 +884,7 @@ export default function SmartScreenshotExtractor({
                           }}
                         >
                           <AlertCircle size={12} style={{ color: '#fbbf24' }} />
-                          <span>No features are selected in this screenshot</span>
+                          <span>No features selected / No data found</span>
                         </div>
                       )}
                     </div>
@@ -859,18 +912,32 @@ export default function SmartScreenshotExtractor({
                 >
                   <div>
                     <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Original Price (CNY):</div>
-                    <div style={{ fontSize: '1rem', fontWeight: 900, color: '#f59e0b' }}>
-                      ¥ {extractedData.priceCNY.toFixed(2)} RMB
-                    </div>
+                    {typeof extractedData.priceCNY === 'number' && extractedData.priceCNY > 0 ? (
+                      <div style={{ fontSize: '1rem', fontWeight: 900, color: '#f59e0b' }}>
+                        ¥ {extractedData.priceCNY.toFixed(2)} RMB
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                        <AlertCircle size={13} /> No data found
+                      </div>
+                    )}
                   </div>
                   <div>
                     <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Converted Price (BDT):</div>
-                    <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#38bdf8' }}>
-                      ৳ {extractedData.priceBDT?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
-                    </div>
-                    <span style={{ fontSize: '0.64rem', color: '#64748b' }}>
-                      (@ ৳{exchangeRate}/RMB)
-                    </span>
+                    {typeof extractedData.priceBDT === 'number' && extractedData.priceBDT > 0 ? (
+                      <>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#38bdf8' }}>
+                          ৳ {extractedData.priceBDT?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
+                        </div>
+                        <span style={{ fontSize: '0.64rem', color: '#64748b' }}>
+                          (@ ৳{exchangeRate}/RMB)
+                        </span>
+                      </>
+                    ) : (
+                      <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                        <AlertCircle size={13} /> No data found
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -984,6 +1051,10 @@ export default function SmartScreenshotExtractor({
                     <button
                       type="button"
                       onClick={() => {
+                        if (!extractedData.isProductScreenshot || extractedData.productName === 'No data found') {
+                          if (showToast) showToast('⚠️ Cannot add: No product data detected in screenshot.');
+                          return;
+                        }
                         onAddDirectlyToList(extractedData);
                         if (showToast) showToast('➕ Product added directly to list!');
                       }}

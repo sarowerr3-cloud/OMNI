@@ -131,43 +131,46 @@ class GeminiService:
     ) -> Dict[str, Any]:
         """Extract structured product details from e-commerce screenshots (1688, AliExpress, PDD)."""
         if not self.is_configured:
-            price_cny = 45.50
             return {
-                "productName": "Ultra 8 NFC Smart Watch with HD AMOLED Display & Waterproof Strap",
-                "colors": ["Midnight Black", "Starlight Silver", "Alpine Orange"],
-                "priceCNY": price_cny,
+                "isProductScreenshot": False,
+                "productName": "No data found",
+                "colors": [],
+                "priceCNY": None,
                 "baseWeightKg": None,
-                "boundingBoxForProductImage": {
-                    "ymin": 12,
-                    "xmin": 12,
-                    "ymax": 60,
-                    "xmax": 88
-                },
+                "boundingBoxForProductImage": None,
                 "exchangeRate": exchange_rate,
-                "priceBDT": round(price_cny * exchange_rate, 2),
+                "priceBDT": None,
                 "finalWeightKg": None,
                 "finalWeightGm": None,
-                "platformDetected": "1688",
+                "platformDetected": "Other",
                 "isAiPowered": False,
-                "note": "Mock extraction (add GEMINI_API_KEY for live Gemini Vision analysis)"
+                "note": "AI key not configured (No data found)"
             }
 
         prompt = (
             "You are an expert AI sourcing vision analyst for Chinese e-commerce platforms (1688.com, AliExpress, Pinduoduo, Taobao).\n"
-            "Analyze the provided product screenshot and extract structured information.\n\n"
+            "Analyze the provided image and extract structured information with extreme accuracy and ZERO fabrication.\n\n"
+            "CRITICAL NON-PRODUCT / RANDOM IMAGE DETECTION:\n"
+            "- If the image is NOT an e-commerce product screenshot (e.g. personal photo, scenery, random document, app UI, meme, chart, or receipt without product details):\n"
+            "  * Set 'isProductScreenshot': false\n"
+            "  * Set 'productName': 'No data found'\n"
+            "  * Set 'priceCNY': null\n"
+            "  * Set 'colors': []\n"
+            "  * Set 'baseWeightKg': null\n"
+            "  * Set 'boundingBoxForProductImage': null\n"
+            "  * Return immediately without fabricating data.\n\n"
             "REQUIREMENTS:\n"
-            "1. 'productName': Translate the Chinese or foreign product title into a clear, attractive, professional English product title.\n"
-            "2. 'colors': Extract all visible color, model, or style variants shown in the screenshot, translated into English as a list of strings.\n"
-            "3. 'priceCNY': Extract the original item price in Chinese Yuan (CNY / RMB ¥) as a number (e.g. 45.5). If a range is shown, use the standard single unit price.\n"
-            "4. 'baseWeightKg': Extract the base product weight in kg ONLY if it is explicitly written or shown in the screenshot (look in specs, parameter table, packaging details, or title: e.g. '重量', '单件重量', '毛重', '净重', '500g' -> 0.5, '350克' -> 0.35, '1.2kg' -> 1.2).\n"
-            "   CRITICAL RULE: If the weight is NOT explicitly written or found anywhere on the screenshot, you MUST return null. Do NOT guess, do NOT estimate, and do NOT provide any default or automatic base weight.\n"
-            "5. 'boundingBoxForProductImage': Detect the bounding box for the main primary product showcase photo/thumbnail in the screenshot as percentage numbers 0-100: "
-            "{'ymin': 0-100, 'xmin': 0-100, 'ymax': 0-100, 'xmax': 0-100}.\n"
+            "1. 'productName': Translate the Chinese or foreign product title into a clear, professional English product title. If missing or not a product, return 'No data found'.\n"
+            "2. 'colors': Extract ONLY actively selected color, model, or style variants indicated in the screenshot. If none selected, return empty list [].\n"
+            "3. 'priceCNY': Extract the item price in Chinese Yuan (CNY / RMB ¥) as a number ONLY if visibly and explicitly printed on the screenshot. If no price is clearly printed, return null. NEVER fabricate a price.\n"
+            "4. 'baseWeightKg': Extract base weight in kg ONLY if explicitly printed on the screenshot. If not found, return null.\n"
+            "5. 'boundingBoxForProductImage': Percentage bounding box {'ymin': 0-100, 'xmin': 0-100, 'ymax': 0-100, 'xmax': 0-100} for product image, or null if not a product.\n"
             "6. 'platform': Detect platform: '1688', 'AliExpress', 'Pinduoduo', 'Taobao', or 'Other'.\n\n"
             "You MUST strictly return a valid JSON object matching this schema:\n"
             "{\n"
-            '  "productName": "Translated English name of the product",\n'
-            '  "colors": ["Color 1 in English", "Color 2 in English"],\n'
+            '  "isProductScreenshot": true,\n'
+            '  "productName": "Translated English name of the product or No data found",\n'
+            '  "colors": ["Selected variant in English"],\n'
             '  "priceCNY": 45.50,\n'
             '  "baseWeightKg": null,\n'
             '  "boundingBoxForProductImage": {\n'
@@ -180,7 +183,7 @@ class GeminiService:
             "}"
         )
 
-        candidate_models = [self.model, "gemini-3-flash-preview", "gemini-3.8-flash", "gemini-2.5-pro"]
+        candidate_models = [self.model, "gemini-3-flash-preview", "gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-latest"]
         image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
         last_err = None
 
@@ -197,26 +200,30 @@ class GeminiService:
                 )
                 import json
                 data = json.loads(response.text)
-                price_cny = float(data.get("priceCNY") or 45.50)
+                is_product = data.get("isProductScreenshot", True) and data.get("productName", "").lower() != "no data found"
+                
+                raw_price = data.get("priceCNY")
+                price_cny = float(raw_price) if (is_product and isinstance(raw_price, (int, float)) and raw_price > 0) else None
+                price_bdt = round(price_cny * exchange_rate, 2) if price_cny is not None else None
+
                 raw_weight = data.get("baseWeightKg")
-                has_weight = isinstance(raw_weight, (int, float)) and raw_weight > 0
+                has_weight = is_product and isinstance(raw_weight, (int, float)) and raw_weight > 0
                 base_weight = float(raw_weight) if has_weight else None
                 final_weight = round(base_weight * 1.2, 3) if base_weight is not None else None
                 final_weight_gm = int(round(final_weight * 1000)) if final_weight is not None else None
 
                 return {
-                    "productName": data.get("productName", "Imported Sourced Product"),
-                    "colors": data.get("colors") or ["Standard"],
+                    "isProductScreenshot": is_product,
+                    "productName": data.get("productName", "No data found") if is_product else "No data found",
+                    "colors": (data.get("colors") or []) if is_product else [],
                     "priceCNY": price_cny,
                     "baseWeightKg": base_weight,
-                    "boundingBoxForProductImage": data.get("boundingBoxForProductImage") or {
-                        "ymin": 10, "xmin": 10, "ymax": 60, "xmax": 90
-                    },
+                    "boundingBoxForProductImage": data.get("boundingBoxForProductImage") if is_product else None,
                     "exchangeRate": exchange_rate,
-                    "priceBDT": round(price_cny * exchange_rate, 2),
+                    "priceBDT": price_bdt,
                     "finalWeightKg": final_weight,
                     "finalWeightGm": final_weight_gm,
-                    "platformDetected": data.get("platform", "1688"),
+                    "platformDetected": data.get("platform", "Other" if not is_product else "1688"),
                     "isAiPowered": True,
                     "note": f"Live extracted with {m}"
                 }
@@ -225,18 +232,18 @@ class GeminiService:
                 last_err = e
 
         logger.error(f"All Gemini models failed in analyze_screenshot: {last_err}")
-        price_cny = 45.50
         return {
-            "productName": "Imported Sourced Item (Fallback)",
-            "colors": ["Standard Edition"],
-            "priceCNY": price_cny,
+            "isProductScreenshot": False,
+            "productName": "No data found",
+            "colors": [],
+            "priceCNY": None,
             "baseWeightKg": None,
-            "boundingBoxForProductImage": {"ymin": 10, "xmin": 10, "ymax": 60, "xmax": 90},
+            "boundingBoxForProductImage": None,
             "exchangeRate": exchange_rate,
-            "priceBDT": round(price_cny * exchange_rate, 2),
+            "priceBDT": None,
             "finalWeightKg": None,
             "finalWeightGm": None,
-            "platformDetected": "1688",
+            "platformDetected": "Other",
             "isAiPowered": False,
             "error": str(last_err)
         }

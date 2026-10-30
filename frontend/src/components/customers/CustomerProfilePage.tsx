@@ -458,10 +458,18 @@ export default function CustomerProfilePage({
 
   // AI Screenshot Extractor: Auto Fill Form
   const handleAutoFillFromScreenshot = (data: ExtractedProductData) => {
-    if (data.productName) setNewProdTitle(data.productName);
+    if (!data.isProductScreenshot || data.productName === 'No data found') {
+      showToast('⚠️ No product details detected in this screenshot to auto-fill.');
+      return;
+    }
+    if (data.productName && data.productName !== 'No data found') {
+      setNewProdTitle(data.productName);
+    }
     if (typeof data.priceCNY === 'number' && data.priceCNY > 0) {
       setNewProdPrice(String(data.priceCNY));
       setNewProdCurrency('RMB');
+    } else {
+      setNewProdPrice('');
     }
     const hasWeight = typeof data.finalWeightKg === 'number' && data.finalWeightKg > 0;
     if (hasWeight && data.finalWeightKg) {
@@ -470,6 +478,8 @@ export default function CustomerProfilePage({
       } else {
         setNewProdWeightVal(String(data.finalWeightKg));
       }
+    } else {
+      setNewProdWeightVal('');
     }
     if (data.hasSelectedFeatures && data.selectedFeatures?.summaryList && data.selectedFeatures.summaryList.length > 0) {
       const specText = data.selectedFeatures.summaryList.join(' | ');
@@ -511,6 +521,11 @@ export default function CustomerProfilePage({
 
   // AI Screenshot Extractor: Add Directly to Folder
   const handleAddDirectlyFromScreenshot = (data: ExtractedProductData) => {
+    if (!data.isProductScreenshot || data.productName === 'No data found') {
+      showToast('⚠️ Cannot add product: No product or pricing data found in screenshot. Please enter details manually.');
+      return;
+    }
+
     let folder = targetFolderForProduct;
     if (!folder && folders.length > 0) {
       folder = folders[0];
@@ -520,7 +535,7 @@ export default function CustomerProfilePage({
       return;
     }
 
-    const priceNum = data.priceCNY || 0;
+    const priceNum = typeof data.priceCNY === 'number' && data.priceCNY > 0 ? data.priceCNY : 0;
     const hasWeight = typeof data.finalWeightKg === 'number' && data.finalWeightKg > 0;
     const finalWeightKg = hasWeight && data.finalWeightKg ? data.finalWeightKg : 0;
     const unitWeightPrice = finalWeightKg > 0 
@@ -637,7 +652,7 @@ export default function CustomerProfilePage({
   // Delete Product
   const handleDeleteProduct = (folderId: string, productId: string, assignedNumber: string) => {
     if (!window.confirm(`Delete product ${assignedNumber}? Remaining items will be resequenced.`)) return;
-    profileFolderService.deleteProductFromFolder(folderId, productId);
+    profileFolderService.deleteProduct(folderId, productId);
     loadFolders();
     showToast(`🗑️ Removed ${assignedNumber}`);
   };

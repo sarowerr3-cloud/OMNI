@@ -127,7 +127,12 @@ export default function CustomerOrderModal({
 
   // Handle auto-fill from AI Smart Screenshot Extractor
   const handleAutoFillFromScreenshot = useCallback((data: ExtractedProductData) => {
-    if (data.productName) {
+    if (!data.isProductScreenshot || data.productName === 'No data found') {
+      showToast('⚠️ No product details detected in this screenshot to auto-fill.');
+      return;
+    }
+
+    if (data.productName && data.productName !== 'No data found') {
       setProductName(data.productName);
     }
 
@@ -137,12 +142,14 @@ export default function CustomerOrderModal({
       setProductImage(primaryImg);
     }
 
-    // Converted price in BDT
+    // Converted price in BDT (leave empty if not detected)
     if (typeof data.priceBDT === 'number' && data.priceBDT > 0) {
       setPrice(String(Math.round(data.priceBDT)));
     } else if (typeof data.priceCNY === 'number' && data.priceCNY > 0) {
       const activeRate = Number(data.exchangeRate || defaultExchangeRate || 20.0);
       setPrice(String(Math.round(data.priceCNY * activeRate)));
+    } else {
+      setPrice('');
     }
 
     // Weight Logic:

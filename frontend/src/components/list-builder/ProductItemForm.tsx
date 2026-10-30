@@ -151,10 +151,18 @@ export default function ProductItemForm({
   };
 
   const handleAutoFillFromScreenshot = (data: ExtractedProductData) => {
-    if (data.productName) setNewTitle(data.productName);
+    if (!data.isProductScreenshot || data.productName === 'No data found') {
+      showToast('⚠️ No product details detected in this screenshot to auto-fill.');
+      return;
+    }
+    if (data.productName && data.productName !== 'No data found') {
+      setNewTitle(data.productName);
+    }
     if (typeof data.priceCNY === 'number' && data.priceCNY > 0) {
       setNewPrice(String(data.priceCNY));
       setNewCurrency('RMB');
+    } else {
+      setNewPrice('');
     }
     const hasWeight = typeof data.finalWeightKg === 'number' && data.finalWeightKg > 0;
     if (hasWeight && data.finalWeightKg) {
@@ -206,7 +214,12 @@ export default function ProductItemForm({
   };
 
   const handleAddDirectlyToListFromScreenshot = (data: ExtractedProductData) => {
-    const priceNum = data.priceCNY || 0;
+    if (!data.isProductScreenshot || data.productName === 'No data found') {
+      showToast('⚠️ Cannot add product: No product or pricing data found in screenshot. Please enter details manually.');
+      return;
+    }
+
+    const priceNum = typeof data.priceCNY === 'number' && data.priceCNY > 0 ? data.priceCNY : 0;
     const rateNum = Number(data.exchangeRate || rmbRate || 20.0);
     const priceBdt = Math.round(priceNum * rateNum * 100) / 100;
     const hasWeight = typeof data.finalWeightKg === 'number' && data.finalWeightKg > 0;
