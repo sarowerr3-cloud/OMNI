@@ -873,7 +873,7 @@ export function exportExtractedProductToExcel(
 ): void {
   const wb = XLSX.utils.book_new();
 
-  const exchangeRate = product.exchangeRate || 17.5;
+  const exchangeRate = product.exchangeRate || 20.0;
   const priceCNY = product.priceCNY || 0;
   const priceBDT = product.priceBDT || Math.round(priceCNY * exchangeRate * 100) / 100;
   const hasWeight = typeof product.baseWeightKg === 'number' && product.baseWeightKg > 0;

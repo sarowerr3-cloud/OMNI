@@ -87,11 +87,11 @@ export default function SmartScreenshotExtractor({
   onAutoFill,
   onAddDirectlyToList,
   showToast,
-  defaultExchangeRate = '17.5',
+  defaultExchangeRate = '20.0',
   isOpenByDefault = true
 }: SmartScreenshotExtractorProps) {
-  // Configurable CNY to BDT exchange rate (default: 17.5 BDT / CNY)
-  const [exchangeRate, setExchangeRate] = useState<string>(String(defaultExchangeRate || '17.5'));
+  // Configurable CNY to BDT exchange rate (default: 20.0 BDT / CNY)
+  const [exchangeRate, setExchangeRate] = useState<string>(String(defaultExchangeRate || '20.0'));
 
   // Drag & drop state
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -218,7 +218,7 @@ export default function SmartScreenshotExtractor({
         formData.append('file', blob, 'pasted_screenshot.png');
       }
 
-      const activeRate = Number(exchangeRate) > 0 ? Number(exchangeRate) : 17.5;
+      const activeRate = Number(exchangeRate) > 0 ? Number(exchangeRate) : 20.0;
       formData.append('cnyRate', String(activeRate));
       formData.append('exchangeRate', String(activeRate));
 
@@ -437,7 +437,7 @@ export default function SmartScreenshotExtractor({
                   min="1"
                   value={exchangeRate}
                   onChange={(e) => setExchangeRate(e.target.value)}
-                  placeholder="17.50"
+                  placeholder="20.00"
                   style={{
                     width: '100%',
                     backgroundColor: '#18181b',
@@ -465,30 +465,6 @@ export default function SmartScreenshotExtractor({
                   BDT
                 </span>
               </div>
-            </div>
-
-            {/* Quick Rate Presets */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Presets:</span>
-              {['17.5', '18.0', '19.5', '20.0'].map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => setExchangeRate(preset)}
-                  style={{
-                    padding: '2px 8px',
-                    fontSize: '0.72rem',
-                    borderRadius: '4px',
-                    border: exchangeRate === preset ? '1px solid #38bdf8' : '1px solid #3f3f46',
-                    backgroundColor: exchangeRate === preset ? 'rgba(56, 189, 248, 0.15)' : '#27272a',
-                    color: exchangeRate === preset ? '#38bdf8' : '#cbd5e1',
-                    cursor: 'pointer',
-                    fontWeight: 700,
-                  }}
-                >
-                  {preset}
-                </button>
-              ))}
             </div>
 
             <div style={{ fontSize: '0.72rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -802,33 +778,70 @@ export default function SmartScreenshotExtractor({
                     </div>
                   )}
 
-                  {/* Colors & Variants List */}
+                  {/* Selected Features / Specifications */}
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginBottom: '4px' }}>
-                      Available Colors / Variants:
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', flexWrap: 'wrap', gap: '4px' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8' }}>
+                        Selected Features in Screenshot:
+                      </span>
+                      {extractedData.selectedFeatures?.rawSelectedText && (
+                        <span style={{ fontSize: '0.64rem', color: '#38bdf8', fontFamily: 'monospace' }}>
+                          {extractedData.selectedFeatures.rawSelectedText}
+                        </span>
+                      )}
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                      {extractedData.colors && extractedData.colors.length > 0 ? (
-                        extractedData.colors.map((c, i) => (
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {extractedData.hasSelectedFeatures &&
+                      extractedData.selectedFeatures?.summaryList &&
+                      extractedData.selectedFeatures.summaryList.length > 0 ? (
+                        extractedData.selectedFeatures.summaryList.map((feature, i) => (
                           <span
                             key={i}
                             style={{
-                              fontSize: '0.7rem',
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              backgroundColor: 'rgba(56, 189, 248, 0.12)',
-                              color: '#7dd3fc',
-                              border: '1px solid rgba(56, 189, 248, 0.3)',
-                              fontWeight: 600,
+                              fontSize: '0.72rem',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                              color: '#f87171',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
                             }}
                           >
-                            {c}
+                            <Tag size={11} />
+                            <span>{feature}</span>
                           </span>
                         ))
                       ) : (
-                        <span style={{ fontSize: '0.72rem', color: '#a1a1aa' }}>Standard Edition</span>
+                        <div
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            backgroundColor: 'rgba(148, 163, 184, 0.08)',
+                            border: '1px solid rgba(148, 163, 184, 0.2)',
+                            color: '#94a3b8',
+                            fontSize: '0.72rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          <AlertCircle size={12} style={{ color: '#fbbf24' }} />
+                          <span>No features are selected in this screenshot</span>
+                        </div>
                       )}
                     </div>
+                    {(!extractedData.hasSelectedFeatures ||
+                      !extractedData.selectedFeatures?.summaryList ||
+                      extractedData.selectedFeatures.summaryList.length === 0) && (
+                      <div style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '3px' }}>
+                        To capture specific variant options, tap the color/size chip in your 1688 app before capturing.
+                      </div>
+                    )}
                   </div>
                 </div>
 

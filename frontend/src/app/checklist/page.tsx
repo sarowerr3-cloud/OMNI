@@ -71,23 +71,8 @@ export default function SourcingChecklistPage() {
       )}
 
       {/* HEADER */}
-      <header style={{
-        background: 'var(--bg-surface)',
-        borderBottom: '1px solid var(--neu-rim)',
-        boxShadow: 'var(--neu-flat-sm)',
-        padding: '0.85rem 1.5rem',
-        position: 'sticky',
-        top: 0,
-        zIndex: 50,
-      }}>
-        <div style={{
-          maxWidth: '1280px',
-          margin: '0 auto',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '1rem',
-        }}>
+      <header className="app-header">
+        <div className="app-header-inner">
           {/* Left: Back Link & Logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <Link
@@ -183,7 +168,7 @@ export default function SourcingChecklistPage() {
       </header>
 
       {/* MAIN CONTENT */}
-      <main style={{ flex: 1, padding: '2rem 1.5rem', maxWidth: '1280px', width: '100%', margin: '0 auto' }}>
+      <main style={{ flex: 1, padding: '1.5rem 0' }}>
         <SourcingChecklistManager
           apiUrl={apiUrl}
           showToast={showToast}
@@ -192,23 +177,8 @@ export default function SourcingChecklistPage() {
       </main>
 
       {/* FOOTER */}
-      <footer style={{
-        background: 'var(--bg-card)',
-        borderTop: '1px solid var(--border-color)',
-        padding: '1.25rem 1.5rem',
-        marginTop: 'auto',
-      }}>
-        <div style={{
-          maxWidth: '1280px',
-          margin: '0 auto',
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '1rem',
-          fontSize: '0.8rem',
-          color: 'var(--text-muted)',
-        }}>
+      <footer className="app-footer">
+        <div className="app-footer-inner">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span>© {new Date().getFullYear()} OMNI Sourcing Pro</span>
             <span>•</span>

@@ -127,7 +127,7 @@ class GeminiService:
         self,
         image_bytes: bytes,
         mime_type: str = "image/jpeg",
-        exchange_rate: float = 17.5
+        exchange_rate: float = 20.0
     ) -> Dict[str, Any]:
         """Extract structured product details from e-commerce screenshots (1688, AliExpress, PDD)."""
         if not self.is_configured:

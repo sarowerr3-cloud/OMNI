@@ -51,7 +51,7 @@ export default function CustomerOrderModal({
   onSaveOrder,
   showToast,
   apiUrl,
-  defaultExchangeRate = '17.5'
+  defaultExchangeRate = '20.0'
 }: CustomerOrderModalProps) {
   // Form State
   const [productName, setProductName] = useState<string>('');
@@ -141,7 +141,7 @@ export default function CustomerOrderModal({
     if (typeof data.priceBDT === 'number' && data.priceBDT > 0) {
       setPrice(String(Math.round(data.priceBDT)));
     } else if (typeof data.priceCNY === 'number' && data.priceCNY > 0) {
-      const activeRate = Number(data.exchangeRate || defaultExchangeRate || 17.5);
+      const activeRate = Number(data.exchangeRate || defaultExchangeRate || 20.0);
       setPrice(String(Math.round(data.priceCNY * activeRate)));
     }
 
@@ -212,7 +212,7 @@ export default function CustomerOrderModal({
         formData.append('imageUrl', productImage);
       }
 
-      const activeRate = Number(defaultExchangeRate || 17.5);
+      const activeRate = Number(defaultExchangeRate || 20.0);
       formData.append('cnyRate', String(activeRate));
       formData.append('exchangeRate', String(activeRate));
 
@@ -500,7 +500,7 @@ export default function CustomerOrderModal({
 
             <SmartScreenshotExtractor
               apiUrl={apiUrl}
-              defaultExchangeRate={defaultExchangeRate || '17.5'}
+              defaultExchangeRate={defaultExchangeRate || '20.0'}
               onAutoFill={handleAutoFillFromScreenshot}
               showToast={showToast}
               isOpenByDefault={true}

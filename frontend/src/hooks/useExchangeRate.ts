@@ -15,7 +15,7 @@ export interface ExchangeRates {
 
 const DEFAULT_RATES: ExchangeRates = {
   cny_to_bdt: 20.0,
-  cny_to_bdt_interbank: 17.15,
+  cny_to_bdt_interbank: 20.0,
   usd_to_bdt: 121.5,
   source: 'default_fallback',
 };

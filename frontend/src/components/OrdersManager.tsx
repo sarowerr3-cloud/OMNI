@@ -32,6 +32,7 @@ import { exportAllOrdersToExcel, exportSingleOrderToExcel } from '@/lib/excelExp
 import { customerApi, getAuthHeaders } from '@/services/customerApi';
 import { Customer } from '@/types/customer';
 import MonthlyExcelModal from '@/components/customers/MonthlyExcelModal';
+import ViewModeToggle, { ViewMode } from '@/components/shared/ViewModeToggle';
 
 interface OrdersManagerProps {
   apiUrl: string;
@@ -51,6 +52,7 @@ export default function OrdersManager({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
   const [sortBy, setSortBy] = useState<'date_desc' | 'date_asc' | 'total_desc' | 'due_desc'>('date_desc');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [showMonthlyExcelModal, setShowMonthlyExcelModal] = useState<boolean>(false);
@@ -241,7 +243,7 @@ export default function OrdersManager({
   };
 
   return (
-    <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 1.5rem', width: '100%' }}>
+    <div className="content-container">
       {/* ------------------------------------------------------------- */}
       {/* HEADER BANNER */}
       {/* ------------------------------------------------------------- */}
@@ -575,6 +577,8 @@ export default function OrdersManager({
             <option value="total_desc">Highest Amount</option>
             <option value="due_desc">Highest Due</option>
           </select>
+
+          <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
         </div>
       </div>
 
@@ -638,7 +642,7 @@ export default function OrdersManager({
             </button>
           )}
         </div>
-      ) : (
+      ) : viewMode === 'list' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {filteredOrders.map((order, orderIdx) => {
             const grandTotal = Number(order.grand_total_bdt || order.total_price_bdt || 0);
@@ -916,6 +920,181 @@ export default function OrdersManager({
                     )}
                   </div>
                 )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+          gap: '14px',
+        }}>
+          {filteredOrders.map((order) => {
+            const grandTotal = Number(order.grand_total_bdt || order.total_price_bdt || 0);
+            const paid = Number(order.total_paid_bdt || 0);
+            const due = order.total_due_bdt !== undefined ? Number(order.total_due_bdt) : Math.max(0, grandTotal - paid);
+            const isFullyPaid = due === 0 && paid > 0;
+            const isPartial = paid > 0 && due > 0;
+            const totalKg = order.items.reduce((acc, it) => acc + (it.weight_kg || 0) * (it.quantity || 1), 0);
+
+            return (
+              <div
+                key={order.id}
+                style={{
+                  background: 'var(--bg-card, #18181b)',
+                  border: '1px solid var(--border-color, #27272a)',
+                  borderRadius: '14px',
+                  padding: '16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  gap: '14px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                {/* Card Top: Order Name, Date & Payment Pill */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '0.98rem', fontWeight: 800, color: 'var(--text-primary, #ffffff)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {order.name}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted, #71717a)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
+                        <Calendar size={12} />
+                        <span>{order.date}</span>
+                        {order.brand_name && <span>• {order.brand_name}</span>}
+                      </div>
+                    </div>
+
+                    <span
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        fontSize: '0.68rem',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        background: isFullyPaid
+                          ? 'rgba(16, 185, 129, 0.15)'
+                          : isPartial
+                          ? 'rgba(245, 158, 11, 0.15)'
+                          : 'rgba(239, 68, 68, 0.15)',
+                        color: isFullyPaid ? '#10b981' : isPartial ? '#f59e0b' : '#ef4444',
+                        border: `1px solid ${isFullyPaid ? 'rgba(16, 185, 129, 0.3)' : isPartial ? 'rgba(245, 158, 11, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {isFullyPaid ? 'PAID' : isPartial ? 'PARTIAL' : 'UNPAID'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Financial Overview Grid */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: '6px',
+                    padding: '10px',
+                    borderRadius: '10px',
+                    background: 'var(--bg-surface, #09090b)',
+                    border: '1px solid var(--border-color, #27272a)',
+                    textAlign: 'center',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted, #71717a)' }}>Grand Total</div>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#38bdf8' }}>
+                      ৳{grandTotal.toLocaleString()}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.65rem', color: '#10b981' }}>Paid</div>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#10b981' }}>
+                      ৳{paid.toLocaleString()}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.65rem', color: due > 0 ? '#ef4444' : '#10b981' }}>Due</div>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 800, color: due > 0 ? '#ef4444' : '#10b981' }}>
+                      ৳{due.toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer: Items + Weight + Actions */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-color, #27272a)', flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted, #71717a)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                      <Package size={12} />
+                      {order.items.length} items
+                    </span>
+                    <span>•</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: '#fbbf24' }}>
+                      <Scale size={12} />
+                      {totalKg.toFixed(2)} kg
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenOrderInBuilder(order)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        background: 'var(--omni-red, #dc2626)',
+                        color: '#fff',
+                        border: 'none',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                      title="Open in Product List Builder"
+                    >
+                      <FolderOpen size={13} />
+                      <span>Open</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => handleExportSingleExcel(order, e)}
+                      style={{
+                        padding: '6px 8px',
+                        borderRadius: '8px',
+                        background: '#107c41',
+                        color: '#fff',
+                        border: 'none',
+                        fontSize: '0.74rem',
+                        cursor: 'pointer',
+                      }}
+                      title="Export single Excel sheet"
+                    >
+                      <FileSpreadsheet size={13} />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteOrder(order.id, e)}
+                      style={{
+                        padding: '6px 8px',
+                        borderRadius: '8px',
+                        background: 'var(--bg-surface, #09090b)',
+                        border: '1px solid var(--border-color, #27272a)',
+                        color: '#ef4444',
+                        fontSize: '0.74rem',
+                        cursor: 'pointer',
+                      }}
+                      title="Delete order"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
               </div>
             );
           })}

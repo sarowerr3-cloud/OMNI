@@ -75,24 +75,8 @@ export default function OrdersRecordPage() {
       )}
 
       {/* Top Standalone Header for Excel Record System */}
-      <header style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 50,
-        background: 'var(--bg-surface)',
-        borderBottom: '1px solid var(--neu-rim)',
-        boxShadow: 'var(--neu-flat-sm)',
-        padding: '0.85rem 1.5rem',
-      }}>
-        <div style={{
-          maxWidth: '1440px',
-          margin: '0 auto',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '1rem',
-        }}>
+      <header className="app-header">
+        <div className="app-header-inner" style={{ flexWrap: 'wrap' }}>
           {/* Left: Branding & Page Title */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <Link 
@@ -221,10 +205,7 @@ export default function OrdersRecordPage() {
       {/* Main Standalone Content */}
       <main style={{
         flex: 1,
-        maxWidth: '1440px',
-        width: '100%',
-        margin: '0 auto',
-        padding: '1.5rem',
+        padding: '1.5rem 0',
       }}>
         <OrdersManager
           apiUrl={apiUrl}

@@ -258,7 +258,7 @@ export default function SourcingChecklistManager({
   };
 
   return (
-    <div style={{ width: '100%', maxWidth: '1280px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div className="content-container" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
       {/* TOP HEADER & CONTROLS */}
       <div style={{

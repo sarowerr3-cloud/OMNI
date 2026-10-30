@@ -61,7 +61,7 @@ router.post('/analyze-screenshot', upload.single('file'), async (req, res) => {
     }
 
     const rateParam = req.body.cnyRate || req.body.exchangeRate;
-    const exchangeRate = Number(rateParam) > 0 ? Number(rateParam) : 17.5;
+    const exchangeRate = Number(rateParam) > 0 ? Number(rateParam) : 20.0;
 
     const apiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : '';
     const isValidKey = Boolean(apiKey && !apiKey.startsWith('your_') && !apiKey.includes('placeholder'));

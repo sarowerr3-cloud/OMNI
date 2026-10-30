@@ -1,6 +1,7 @@
 import './globals.css';
 import { Metadata, Viewport } from 'next';
 import { ThemeProvider } from '@/context/ThemeContext';
+import { ToastProvider } from '@/context/ToastContext';
 
 export const metadata: Metadata = {
   title: 'OMNI - Global Sourcing & BD Market Intelligence Engine',
@@ -37,7 +38,9 @@ export default function RootLayout({
       </head>
       <body>
         <ThemeProvider>
-          <main>{children}</main>
+          <ToastProvider>
+            <main>{children}</main>
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

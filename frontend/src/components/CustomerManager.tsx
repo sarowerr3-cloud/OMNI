@@ -30,11 +30,14 @@ import {
   Filter,
   Layers,
   FileText,
-  FileSpreadsheet
+  FileSpreadsheet,
+  FolderOpen,
+  ArrowRight
 } from 'lucide-react';
 import { ProductItem } from '@/components/ProductListBuilder';
 import { Customer, CustomerGroup, CustomerOrder, CustomerOrderPayload, CustomerPayload, GroupPayload } from '@/types/customer';
 import { customerApi, normalizePhoneNumber } from '@/services/customerApi';
+import ViewModeToggle, { ViewMode } from '@/components/shared/ViewModeToggle';
 import {
   formatWhatsappPhone,
   getWhatsappShareUrl,
@@ -50,6 +53,7 @@ import CustomerProfileModal from './customers/CustomerProfileModal';
 import CustomerOrderModal from './customers/CustomerOrderModal';
 import UniversalCustomerSearch from './customers/UniversalCustomerSearch';
 import MonthlyExcelModal from './customers/MonthlyExcelModal';
+import CustomerProfilePage from './customers/CustomerProfilePage';
 
 export type { Customer, CustomerGroup };
 
@@ -60,6 +64,7 @@ interface CustomerManagerProps {
   initialSelectedProduct?: ProductItem | null;
   selectedCustomerId?: string | null;
   onClearSelectedCustomer?: () => void;
+  onOpenFolders?: (customerId: string) => void;
 }
 
 export default function CustomerManager({
@@ -68,7 +73,8 @@ export default function CustomerManager({
   showToast,
   initialSelectedProduct = null,
   selectedCustomerId = null,
-  onClearSelectedCustomer
+  onClearSelectedCustomer,
+  onOpenFolders
 }: CustomerManagerProps) {
   // Customers & Groups State
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -79,6 +85,7 @@ export default function CustomerManager({
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('All');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   // Modals
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
@@ -110,10 +117,16 @@ export default function CustomerManager({
       ]);
       setCustomers(custData);
       setGroups(grpData);
+      try {
+        localStorage.setItem('omni_customers_cache_v2', JSON.stringify(custData));
+      } catch {}
 
-      // If a customer was opened by ID
+      // If a customer was opened by ID or is currently open in profile view
       if (selectedCustomerId) {
         const found = custData.find((c) => c.id === selectedCustomerId);
+        if (found) setSelectedProfileCustomer(found);
+      } else if (selectedProfileCustomer) {
+        const found = custData.find((c) => c.id === selectedProfileCustomer.id);
         if (found) setSelectedProfileCustomer(found);
       }
     } catch (err) {
@@ -244,14 +257,24 @@ export default function CustomerManager({
   const handleSaveOrder = async (orderPayload: CustomerOrderPayload, orderId?: string) => {
     if (!targetCustomerForOrder) return;
 
-    if (orderId) {
-      const updatedOrder = await customerApi.updateCustomerOrder(apiUrl, targetCustomerForOrder.id, orderId, orderPayload);
-      await fetchAllData();
-      showToast('✅ Order updated successfully!');
-    } else {
-      const createdOrder = await customerApi.addCustomerOrder(apiUrl, targetCustomerForOrder.id, orderPayload);
-      await fetchAllData();
-      showToast('✅ Order saved to customer profile!');
+    try {
+      if (orderId) {
+        await customerApi.updateCustomerOrder(apiUrl, targetCustomerForOrder.id, orderId, orderPayload);
+        showToast('✅ Order updated successfully!');
+      } else {
+        await customerApi.addCustomerOrder(apiUrl, targetCustomerForOrder.id, orderPayload);
+        showToast('✅ Order saved to customer profile!');
+      }
+
+      // Re-fetch customer data and sync currently open profile
+      const refreshed = await customerApi.getCustomer(apiUrl, targetCustomerForOrder.id);
+      setSelectedProfileCustomer(refreshed);
+      setCustomers((prev) => prev.map((c) => (c.id === refreshed.id ? refreshed : c)));
+      setShowOrderModal(false);
+      setOrderToEdit(null);
+    } catch (err) {
+      console.error('Failed to save order:', err);
+      showToast('❌ Error saving order. Please check inputs.');
     }
   };
 
@@ -262,7 +285,9 @@ export default function CustomerManager({
         is_delivered: isDelivered,
         is_cancelled: isCancelled
       });
-      await fetchAllData();
+      const refreshed = await customerApi.getCustomer(apiUrl, selectedProfileCustomer.id);
+      setSelectedProfileCustomer(refreshed);
+      setCustomers((prev) => prev.map((c) => (c.id === refreshed.id ? refreshed : c)));
       showToast(isDelivered ? '📦 Order marked as Delivered!' : (isCancelled ? '❌ Order marked as Cancelled!' : '🔄 Order status updated.'));
     } catch {
       showToast('⚠️ Could not update order status.');
@@ -273,7 +298,9 @@ export default function CustomerManager({
     if (!selectedProfileCustomer) return;
     try {
       await customerApi.deleteCustomerOrder(apiUrl, selectedProfileCustomer.id, orderId);
-      await fetchAllData();
+      const refreshed = await customerApi.getCustomer(apiUrl, selectedProfileCustomer.id);
+      setSelectedProfileCustomer(refreshed);
+      setCustomers((prev) => prev.map((c) => (c.id === refreshed.id ? refreshed : c)));
       showToast('🗑️ Order deleted from customer profile.');
     } catch {
       showToast('⚠️ Could not delete order.');
@@ -327,8 +354,63 @@ export default function CustomerManager({
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  // Full Page Customer Profile View (Not a floating window / modal)
+  if (selectedProfileCustomer) {
+    return (
+      <div className="content-container">
+        <CustomerProfilePage
+          customer={selectedProfileCustomer}
+          onBack={() => {
+            setSelectedProfileCustomer(null);
+            if (onClearSelectedCustomer) onClearSelectedCustomer();
+          }}
+          onUpdateProfile={async (cid, payload) => {
+            const updated = await customerApi.updateCustomer(apiUrl, cid, payload);
+            setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+            setSelectedProfileCustomer(updated);
+          }}
+          onAddNewOrder={(cust) => handleOpenNewOrder(cust)}
+          onEditOrder={(order) => handleOpenEditOrder(order)}
+          onDeleteOrder={async (orderId) => handleDeleteOrder(orderId)}
+          onToggleOrderStatus={async (order, isDel, isCan) => handleToggleOrderStatus(order, isDel, isCan)}
+          onEditCustomerProfile={(cust) => handleOpenEdit(cust)}
+          showToast={showToast}
+          apiUrl={apiUrl}
+        />
+
+        {/* Customer Form Modal for editing profile details */}
+        <CustomerFormModal
+          isOpen={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          editingCustomer={editingCustomer}
+          groups={groups}
+          prefilledQuery={prefillQuery}
+          onSave={handleSaveCustomer}
+          isSaving={savingCustomer}
+        />
+
+        {/* Customer Order Details Modal */}
+        {showOrderModal && targetCustomerForOrder && (
+          <CustomerOrderModal
+            isOpen={showOrderModal}
+            onClose={() => {
+              setShowOrderModal(false);
+              setOrderToEdit(null);
+            }}
+            customer={targetCustomerForOrder}
+            orderToEdit={orderToEdit}
+            onSaveOrder={handleSaveOrder}
+            showToast={showToast}
+            apiUrl={apiUrl}
+            defaultExchangeRate="20.0"
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div style={{ width: '100%', maxWidth: '1280px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.75rem', padding: '0 1rem' }}>
+    <div className="content-container" style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
       
       {/* ------------------------------------------------------------- */}
       {/* 1. UNIVERSAL SEARCH PANEL (PROMINENT AT TOP) */}
@@ -646,6 +728,8 @@ export default function CustomerManager({
               <FileSpreadsheet size={13} />
               <span>Monthly Excel</span>
             </button>
+
+            <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
           </div>
         </div>
 
@@ -682,7 +766,7 @@ export default function CustomerManager({
               <span>Create Customer Profile</span>
             </button>
           </div>
-        ) : (
+        ) : viewMode === 'grid' ? (
           <div
             style={{
               display: 'grid',
@@ -691,13 +775,10 @@ export default function CustomerManager({
             }}
           >
             {filteredCustomers.map((cust) => {
-              const activeCount = cust.orders?.filter((o) => !o.is_delivered && !o.is_cancelled).length || 0;
-              const deliveredCount = cust.orders?.filter((o) => o.is_delivered).length || 0;
-              const totalOrders = cust.orders?.length || 0;
-
               return (
                 <div
                   key={cust.id}
+                  onClick={() => handleOpenProfile(cust)}
                   style={{
                     background: 'var(--bg-card)',
                     borderRadius: '16px',
@@ -707,35 +788,46 @@ export default function CustomerManager({
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '12px',
-                    position: 'relative',
+                    cursor: 'pointer',
                     transition: 'all 0.18s ease',
                   }}
                   className="hover-neu-lift"
+                  title="Click to view full customer profile & options"
                 >
-                  {/* Top: Customer Avatar, Name, Group Badge */}
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  {/* Top: Customer Avatar, Name, Category & View Profile Indicator */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
                       <div
                         style={{
-                          width: '44px',
-                          height: '44px',
+                          width: '42px',
+                          height: '42px',
                           borderRadius: '12px',
                           background: 'linear-gradient(135deg, #ef4444, #dc2626)',
                           color: '#ffffff',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontSize: '1.1rem',
+                          fontSize: '1.05rem',
                           fontWeight: 800,
-                          boxShadow: '0 4px 10px rgba(239, 68, 68, 0.3)',
+                          boxShadow: '0 4px 10px rgba(239, 68, 68, 0.25)',
                           flexShrink: 0,
                         }}
                       >
                         {cust.name.charAt(0).toUpperCase()}
                       </div>
 
-                      <div>
-                        <div style={{ fontSize: '0.98rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: '1.2' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: '1rem',
+                            fontWeight: 800,
+                            color: 'var(--text-primary)',
+                            lineHeight: '1.2',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
                           {cust.name}
                         </div>
                         <span
@@ -756,196 +848,137 @@ export default function CustomerManager({
                       </div>
                     </div>
 
-                    {/* Quick WhatsApp Link */}
-                    <button
-                      onClick={() => handleOpenWhatsapp(cust)}
+                    <div
                       style={{
-                        padding: '6px 10px',
-                        borderRadius: '10px',
-                        background: 'rgba(16, 185, 129, 0.12)',
-                        border: '1px solid rgba(16, 185, 129, 0.3)',
-                        color: '#10b981',
-                        fontSize: '0.75rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '4px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        color: 'var(--omni-red)',
+                        background: 'rgba(239, 68, 68, 0.08)',
+                        padding: '4px 8px',
+                        borderRadius: '8px',
                         flexShrink: 0,
                       }}
-                      title="Open direct WhatsApp conversation"
                     >
-                      <MessageSquare size={13} />
-                      <span>WhatsApp</span>
-                    </button>
-                  </div>
-
-                  {/* Contact & Address Details */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.82rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-primary)', fontWeight: 600 }}>
-                      <Phone size={13} style={{ color: 'var(--omni-red)', flexShrink: 0 }} />
-                      <a href={`tel:${cust.phone}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                        {cust.phone}
-                      </a>
-                    </div>
-
-                    {cust.address && (
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
-                        <MapPin size={13} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: '2px' }} />
-                        <span style={{ lineHeight: '1.3' }}>{cust.address}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Special Requirements / Brief Notes (if present) */}
-                  {cust.notes && (
-                    <div
-                      style={{
-                        padding: '8px 10px',
-                        borderRadius: '10px',
-                        background: 'var(--bg-surface)',
-                        border: '1px solid var(--neu-inset-border)',
-                        fontSize: '0.75rem',
-                        color: 'var(--text-muted)',
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '6px',
-                      }}
-                    >
-                      <FileText size={13} style={{ color: '#8b5cf6', flexShrink: 0, marginTop: '2px' }} />
-                      <span style={{ fontStyle: 'italic', lineHeight: '1.3', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                        {cust.notes}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Stored Orders Summary Strip */}
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(3, 1fr)',
-                      gap: '8px',
-                      background: 'var(--bg-surface)',
-                      padding: '8px 12px',
-                      borderRadius: '12px',
-                      border: '1px solid var(--border-color)',
-                      textAlign: 'center',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>Orders</div>
-                      <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                        {totalOrders}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div style={{ fontSize: '0.65rem', color: '#10b981', fontWeight: 600 }}>Delivered</div>
-                      <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#10b981' }}>
-                        {deliveredCount}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div style={{ fontSize: '0.65rem', color: cust.total_due > 0 ? '#ef4444' : '#10b981', fontWeight: 600 }}>
-                        Balance Due
-                      </div>
-                      <div style={{ fontSize: '0.95rem', fontWeight: 800, color: cust.total_due > 0 ? '#ef4444' : '#10b981' }}>
-                        ৳{cust.total_due.toLocaleString()}
-                      </div>
+                      <span>Profile</span>
+                      <ArrowRight size={12} />
                     </div>
                   </div>
 
-                  {/* Action Buttons Toolbar */}
+                  {/* Basic Details: Number (Phone) and Location (Address) */}
                   <div
                     style={{
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '6px',
-                      paddingTop: '8px',
-                      borderTop: '1px solid var(--border-color)',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-color)',
+                      fontSize: '0.82rem',
                     }}
                   >
-                    {/* View Profile & Orders */}
-                    <button
-                      onClick={() => handleOpenProfile(cust)}
+                    {/* Number / Phone */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontWeight: 600 }}>
+                      <Phone size={14} style={{ color: 'var(--omni-red)', flexShrink: 0 }} />
+                      <span style={{ fontFamily: 'monospace' }}>{cust.phone || 'No phone number'}</span>
+                    </div>
+
+                    {/* Location / Address */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                      <MapPin size={14} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: '2px' }} />
+                      <span style={{ lineHeight: '1.3', wordBreak: 'break-word' }}>
+                        {cust.address || 'No location specified'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {filteredCustomers.map((cust) => {
+              return (
+                <div
+                  key={cust.id}
+                  onClick={() => handleOpenProfile(cust)}
+                  style={{
+                    background: 'var(--bg-card)',
+                    borderRadius: '12px',
+                    border: '1px solid var(--border-color)',
+                    padding: '12px 16px',
+                    boxShadow: 'var(--neu-flat-sm)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '14px',
+                    flexWrap: 'wrap',
+                    cursor: 'pointer',
+                    transition: 'all 0.18s ease',
+                  }}
+                  className="hover-neu-lift"
+                  title="Click to view full customer profile & options"
+                >
+                  {/* Left: Avatar, Name & Category */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '180px', flex: '1 1 200px' }}>
+                    <div
                       style={{
-                        flex: 1,
-                        padding: '7px 10px',
+                        width: '38px',
+                        height: '38px',
                         borderRadius: '10px',
-                        background: 'var(--bg-surface)',
-                        border: '1px solid var(--neu-rim)',
-                        boxShadow: 'var(--neu-flat-sm)',
-                        color: 'var(--text-primary)',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
+                        background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                        color: '#ffffff',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        gap: '5px',
+                        fontSize: '0.95rem',
+                        fontWeight: 800,
+                        boxShadow: '0 2px 8px rgba(239, 68, 68, 0.25)',
+                        flexShrink: 0,
                       }}
-                      title="Open Profile & View All Orders"
                     >
-                      <Package size={14} style={{ color: 'var(--omni-red)' }} />
-                      <span>View Orders ({totalOrders})</span>
-                    </button>
+                      {cust.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        {cust.name}
+                      </div>
+                      <span
+                        style={{
+                          fontSize: '0.65rem',
+                          fontWeight: 700,
+                          padding: '1px 6px',
+                          borderRadius: '5px',
+                          background: 'rgba(239, 68, 68, 0.1)',
+                          color: 'var(--omni-red)',
+                          border: '1px solid rgba(239, 68, 68, 0.25)',
+                        }}
+                      >
+                        {cust.group}
+                      </span>
+                    </div>
+                  </div>
 
-                    {/* Quick Input Order */}
-                    <button
-                      onClick={() => handleOpenNewOrder(cust)}
-                      style={{
-                        padding: '7px 12px',
-                        borderRadius: '10px',
-                        background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-                        border: 'none',
-                        color: '#ffffff',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        boxShadow: '0 2px 8px rgba(220, 38, 38, 0.35)',
-                      }}
-                      title="Input new order for this customer"
-                    >
-                      <Plus size={14} />
-                      <span>Order</span>
-                    </button>
+                  {/* Middle: Number & Location */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flex: '2 1 280px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+                      <Phone size={13} style={{ color: 'var(--omni-red)', flexShrink: 0 }} />
+                      <span style={{ fontFamily: 'monospace' }}>{cust.phone || 'No phone'}</span>
+                    </div>
 
-                    {/* Edit Profile */}
-                    <button
-                      onClick={() => handleOpenEdit(cust)}
-                      style={{
-                        padding: '7px 9px',
-                        borderRadius: '10px',
-                        background: 'var(--bg-surface)',
-                        border: '1px solid var(--neu-rim)',
-                        color: 'var(--text-secondary)',
-                        cursor: 'pointer',
-                      }}
-                      title="Edit Customer Profile"
-                    >
-                      <Edit3 size={13} />
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                      <MapPin size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                      <span>{cust.address || 'No location'}</span>
+                    </div>
+                  </div>
 
-                    {/* Delete Customer */}
-                    <button
-                      onClick={() => handleDeleteCustomer(cust.id, cust.name)}
-                      style={{
-                        padding: '7px 9px',
-                        borderRadius: '10px',
-                        background: 'var(--bg-surface)',
-                        border: '1px solid var(--neu-rim)',
-                        color: '#ef4444',
-                        cursor: 'pointer',
-                      }}
-                      title="Delete Customer Profile"
-                    >
-                      <Trash2 size={13} />
-                    </button>
+                  {/* Right: Enter Profile Indicator */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.74rem', fontWeight: 700, color: 'var(--omni-red)', flexShrink: 0 }}>
+                    <span>View Profile</span>
+                    <ArrowRight size={13} />
                   </div>
                 </div>
               );
@@ -969,29 +1002,6 @@ export default function CustomerManager({
         isSaving={savingCustomer}
       />
 
-      {/* Customer Profile & All Stored Orders Modal */}
-      {selectedProfileCustomer && (
-        <CustomerProfileModal
-          isOpen={!!selectedProfileCustomer}
-          onClose={() => {
-            setSelectedProfileCustomer(null);
-            if (onClearSelectedCustomer) onClearSelectedCustomer();
-          }}
-          customer={selectedProfileCustomer}
-          onUpdateProfile={async (cid, payload) => {
-            const updated = await customerApi.updateCustomer(apiUrl, cid, payload);
-            setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-            setSelectedProfileCustomer(updated);
-          }}
-          onAddNewOrder={(cust) => handleOpenNewOrder(cust)}
-          onEditOrder={(order) => handleOpenEditOrder(order)}
-          onToggleOrderStatus={handleToggleOrderStatus}
-          onDeleteOrder={handleDeleteOrder}
-          onEditCustomerProfile={(cust) => handleOpenEdit(cust)}
-          showToast={showToast}
-        />
-      )}
-
       {/* Customer Order Details Input Modal */}
       {showOrderModal && targetCustomerForOrder && (
         <CustomerOrderModal
@@ -1005,7 +1015,7 @@ export default function CustomerManager({
           onSaveOrder={handleSaveOrder}
           showToast={showToast}
           apiUrl={apiUrl}
-          defaultExchangeRate="17.5"
+          defaultExchangeRate="20.0"
         />
       )}
 

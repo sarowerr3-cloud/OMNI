@@ -12,7 +12,7 @@ async def test_screenshot_extractor_mock_fallback(async_client: AsyncClient):
         "file": ("test_screenshot.png", fake_image, "image/png")
     }
     data = {
-        "cnyRate": "17.5"
+        "cnyRate": "20.0"
     }
 
     response = await async_client.post("/api/v1/products/analyze-screenshot", files=files, data=data)
@@ -35,8 +35,8 @@ async def test_screenshot_extractor_mock_fallback(async_client: AsyncClient):
     else:
         assert res_data["finalWeightKg"] is None
 
-    # Verify BDT conversion: priceBDT == round(priceCNY * 17.5, 2)
-    assert res_data["priceBDT"] == round(res_data["priceCNY"] * 17.5, 2)
+    # Verify BDT conversion: priceBDT == round(priceCNY * 20.0, 2)
+    assert res_data["priceBDT"] == round(res_data["priceCNY"] * 20.0, 2)
 
 
 @pytest.mark.asyncio

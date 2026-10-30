@@ -26,7 +26,8 @@ import {
   FileSpreadsheet,
   Download,
   Truck,
-  Box
+  Box,
+  FolderOpen
 } from 'lucide-react';
 import { Customer, CustomerOrder, CustomerOrderPayload, CustomerPayload } from '@/types/customer';
 import { buttonActionStyle, inputStyle } from './customerStyles';
@@ -44,6 +45,7 @@ interface CustomerProfileModalProps {
   onDeleteOrder: (orderId: string) => Promise<void>;
   onEditCustomerProfile: (customer: Customer) => void;
   showToast: (msg: string) => void;
+  onOpenFolders?: (customerId: string) => void;
 }
 
 export default function CustomerProfileModal({
@@ -56,7 +58,8 @@ export default function CustomerProfileModal({
   onToggleOrderStatus,
   onDeleteOrder,
   onEditCustomerProfile,
-  showToast
+  showToast,
+  onOpenFolders
 }: CustomerProfileModalProps) {
   const [activeOrderFilter, setActiveOrderFilter] = useState<'all' | 'active' | 'delivered' | 'cancelled'>('all');
   const [editingProfileNotes, setEditingProfileNotes] = useState<boolean>(false);
@@ -282,6 +285,28 @@ export default function CustomerProfileModal({
 
           {/* Top Right Profile Controls */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {onOpenFolders && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenFolders(customer.id);
+                }}
+                style={{
+                  ...buttonActionStyle,
+                  padding: '6px 12px',
+                  fontSize: '0.78rem',
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  color: 'var(--omni-red)',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  fontWeight: 700,
+                }}
+                title="Open Product Folders for this profile"
+              >
+                <FolderOpen size={14} />
+                <span>Organize in Folders</span>
+              </button>
+            )}
+
             <button
               onClick={handleExportCustomerExcel}
               style={{

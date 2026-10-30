@@ -103,7 +103,7 @@ export default function AiSourcingHub({
   };
 
   return (
-    <div style={{ width: '100%', maxWidth: '1280px', margin: '0 auto', padding: '0 1rem' }}>
+    <div className="content-container">
       {/* Toast */}
       {toastMsg && (
         <div style={{

@@ -121,29 +121,6 @@ export const OmniOptionsSidebar: React.FC<OmniOptionsSidebarProps> = ({
               fontSize: '0.88rem',
             }}
           />
-          {/* Quick RMB Presets */}
-          <div style={{ display: 'flex', gap: '3px', marginTop: '4px' }}>
-            {['19.50', '20.00', '20.50', '21.00'].map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => onUpdateRmbRate(r)}
-                style={{
-                  flex: 1,
-                  padding: '2px 4px',
-                  fontSize: '0.65rem',
-                  borderRadius: '4px',
-                  background: rmbRate === r ? 'rgba(220, 38, 38, 0.25)' : 'rgba(255, 255, 255, 0.04)',
-                  border: rmbRate === r ? '1px solid #dc2626' : '1px solid rgba(255, 255, 255, 0.08)',
-                  color: rmbRate === r ? '#fca5a5' : '#a1a1aa',
-                  cursor: 'pointer',
-                  fontWeight: rmbRate === r ? 700 : 500,
-                }}
-              >
-                ৳{r}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Cargo Weight Rate Input */}
@@ -193,77 +170,6 @@ export const OmniOptionsSidebar: React.FC<OmniOptionsSidebarProps> = ({
               <option value="per_gm">Tk/gm</option>
               <option value="per_kg">Tk/kg</option>
             </select>
-          </div>
-          {/* Quick Freight Presets */}
-          <div style={{ display: 'flex', gap: '3px', marginTop: '4px' }}>
-            <button
-              type="button"
-              onClick={() => { onUpdateFreightRate('1.2'); onUpdateFreightUnit('per_gm'); }}
-              style={{
-                flex: 1,
-                padding: '2px 3px',
-                fontSize: '0.62rem',
-                borderRadius: '4px',
-                background: freightRate === '1.2' && freightUnit === 'per_gm' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(255, 255, 255, 0.04)',
-                border: freightRate === '1.2' && freightUnit === 'per_gm' ? '1px solid #fbbf24' : '1px solid rgba(255, 255, 255, 0.08)',
-                color: freightRate === '1.2' && freightUnit === 'per_gm' ? '#fbbf24' : '#a1a1aa',
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
-            >
-              1.2/gm
-            </button>
-            <button
-              type="button"
-              onClick={() => { onUpdateFreightRate('1.0'); onUpdateFreightUnit('per_gm'); }}
-              style={{
-                flex: 1,
-                padding: '2px 3px',
-                fontSize: '0.62rem',
-                borderRadius: '4px',
-                background: freightRate === '1.0' && freightUnit === 'per_gm' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(255, 255, 255, 0.04)',
-                border: freightRate === '1.0' && freightUnit === 'per_gm' ? '1px solid #fbbf24' : '1px solid rgba(255, 255, 255, 0.08)',
-                color: freightRate === '1.0' && freightUnit === 'per_gm' ? '#fbbf24' : '#a1a1aa',
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
-            >
-              1.0/gm
-            </button>
-            <button
-              type="button"
-              onClick={() => { onUpdateFreightRate('850'); onUpdateFreightUnit('per_kg'); }}
-              style={{
-                flex: 1,
-                padding: '2px 3px',
-                fontSize: '0.62rem',
-                borderRadius: '4px',
-                background: freightRate === '850' && freightUnit === 'per_kg' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(255, 255, 255, 0.04)',
-                border: freightRate === '850' && freightUnit === 'per_kg' ? '1px solid #fbbf24' : '1px solid rgba(255, 255, 255, 0.08)',
-                color: freightRate === '850' && freightUnit === 'per_kg' ? '#fbbf24' : '#a1a1aa',
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
-            >
-              850/kg
-            </button>
-            <button
-              type="button"
-              onClick={() => { onUpdateFreightRate('350'); onUpdateFreightUnit('per_kg'); }}
-              style={{
-                flex: 1,
-                padding: '2px 3px',
-                fontSize: '0.62rem',
-                borderRadius: '4px',
-                background: freightRate === '350' && freightUnit === 'per_kg' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(255, 255, 255, 0.04)',
-                border: freightRate === '350' && freightUnit === 'per_kg' ? '1px solid #fbbf24' : '1px solid rgba(255, 255, 255, 0.08)',
-                color: freightRate === '350' && freightUnit === 'per_kg' ? '#fbbf24' : '#a1a1aa',
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
-            >
-              350/kg
-            </button>
           </div>
         </div>
       </div>

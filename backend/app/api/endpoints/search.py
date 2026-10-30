@@ -90,8 +90,8 @@ class ManualCalculatorRequest(BaseModel):
     quantity: int = 10
     weight_value: float = 0.35
     weight_unit: str = "kg"  # "kg" or "gm"
-    shipping_charge_per_unit_weight: Decimal = Decimal("1000.00")
-    shipping_charge_unit: str = "per_kg"  # "per_kg" or "per_gm"
+    shipping_charge_per_unit_weight: Decimal = Decimal("1.20")
+    shipping_charge_unit: str = "per_gm"  # "per_kg" or "per_gm"
     domestic_china_shipping_bdt: Decimal = Decimal("20.00")
     agent_fee_percent: Decimal = Decimal("5.00")
     duty_vat_percent: Decimal = Decimal("15.00")

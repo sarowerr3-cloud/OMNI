@@ -27,8 +27,8 @@ async def analyze_product_screenshot(
             detail="No screenshot image file provided. Please upload an image.",
         )
 
-    # Determine rate (priority: exchange_rate -> exchangeRate -> cnyRate -> 17.5 default)
-    rate = 17.5
+    # Determine rate (priority: exchange_rate -> exchangeRate -> cnyRate -> 20.0 default)
+    rate = 20.0
     for candidate in [exchange_rate, exchangeRate, cnyRate]:
         if candidate is not None and candidate > 0:
             rate = float(candidate)

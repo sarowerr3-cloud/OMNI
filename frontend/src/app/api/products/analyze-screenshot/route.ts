@@ -13,8 +13,20 @@ interface BoundingBox {
   xmax: number;
 }
 
+interface RawSelectedFeatures {
+  color?: string | null;
+  size?: string | null;
+  model?: string | null;
+  style?: string | null;
+  shape?: string | null;
+  combination?: string | null;
+  rawSelectedText?: string | null;
+}
+
 interface RawGeminiExtraction {
   productName?: string;
+  hasSelectedFeatures?: boolean;
+  selectedFeatures?: RawSelectedFeatures;
   colors?: string[];
   priceCNY?: number;
   baseWeightKg?: number | null;
@@ -22,37 +34,60 @@ interface RawGeminiExtraction {
   platform?: string;
 }
 
-const EXTRACTION_SYSTEM_PROMPT = `You are an expert AI sourcing vision analyst for Chinese e-commerce platforms (1688.com, AliExpress, Pinduoduo, Taobao).
+const EXTRACTION_SYSTEM_PROMPT = `You are an expert AI sourcing vision analyst for Chinese e-commerce platforms (1688.com, AliExpress, Pinduoduo, Taobao, Weidian).
 Analyze the provided product screenshot and extract structured information with extreme accuracy.
 
-REQUIREMENTS:
-1. "productName": Translate the Chinese or foreign product title into a clear, attractive, professional English product title. Filter out spammy promotional keywords (such as "工厂直销", "跨境热销", "一件代发") and keep the real product title and key features.
-2. "colors": Extract all visible color, model, or style variants shown in the screenshot (look at SKU selectors, thumbnail swatches, or options like 颜色/规格), translated into English as a list of strings (e.g. ["Midnight Black", "Starlight Silver", "Alpine Green"]).
-3. "priceCNY": Extract the original item price in Chinese Yuan (CNY / RMB ¥).
-   - Look for prices marked with '¥', '元', or 'RMB'.
-   - If a wholesale tiered price is shown (e.g. "2-99件 ¥42.00", ">=100件 ¥38.00"), extract the single or primary unit purchase price.
-   - Return as a clean number (e.g. 45.5).
-   - If only USD or another currency is visible, convert or estimate the equivalent CNY.
-4. "baseWeightKg": Extract the base product weight in kilograms (kg) ONLY if it is explicitly written or shown in the screenshot (look in specs, parameter table, packaging details, or title: e.g. "重量", "单件重量", "毛重", "净重", "500g" -> 0.5, "350克" -> 0.35, "1.2kg" -> 1.2).
-   - CRITICAL RULE: If the weight is NOT explicitly written or found anywhere on the screenshot, you MUST return null. Do NOT guess, do NOT estimate based on product type, and do NOT provide any default or automatic base weight.
-   - Return either a positive number in kg (e.g. 0.5) OR null.
-5. "boundingBoxForProductImage": Detect the bounding box for the main primary product showcase photo/thumbnail in the screenshot (excluding unrelated ads, reviews, or bottom navigation).
-   - Coordinates must be numbers from 0 to 100 representing percentage coordinates:
-     { "ymin": 0 to 100, "xmin": 0 to 100, "ymax": 0 to 100, "xmax": 0 to 100 }
-6. "platform": Detect the source platform: "1688", "AliExpress", "Pinduoduo", "Taobao", or "Other".
+CRITICAL FEATURE SELECTION RULES (COLOR, SIZE, MODEL, STYLE, SHAPE, COMBINATIONS):
+- In Chinese e-commerce screenshots, users often select specific options before purchasing. You must identify ONLY the specific features that are ACTIVELY SELECTED or INDICATED in the screenshot.
+- Features to extract:
+  1. "color": Selected color name in English (e.g. "Matte Black", "Cream White", "Navy Blue")
+  2. "size": Selected size/dimension (e.g. "XL", "42 EU", "120cm x 60cm", "500ml")
+  3. "model": Selected device/specification model (e.g. "Pro Max Edition", "Type-C Fast Charge", "Upgraded 2026")
+  4. "style": Selected style/pattern (e.g. "Hooded Thickened", "Round Collar", "Striped")
+  5. "shape": Selected shape/geometry (e.g. "Round", "Square", "Oval", "Curved")
+  6. "combination": Selected package bundle or combo (e.g. "1 Host + 2 Batteries + Fast Charger", "Pack of 5", "Gift Box")
+
+HOW TO RECOGNIZE WHAT IS ACTIVELY SELECTED (VISUAL ANCHORS):
+- Look for the Chinese summary text: "已选" (Selected) or "已选择" (e.g., "已选: 曜石黑, XL, 旗舰版"). Anything following "已选" is 100% the selected feature combination!
+- Look for visual button/chip indicators:
+  * An active colored border (typically bright orange #ff5000, red #e02e24, or cyan/blue border) while other unselected options have pale grey or white borders.
+  * A filled colored background or bold text on a specific option button.
+  * A small checkmark icon (✓) or colored badge in the bottom-right corner of the active thumbnail or option box.
+  * In 1688 wholesale tiered lists: whichever row has a quantity entered (> 0, e.g. "10件").
+- DO NOT list all unselected options! Never output options that are NOT selected.
+- If an option is selected, translate it into clean, professional English.
+
+STRICT NEGATIVE RULE:
+- If NO feature is selected, highlighted, or indicated in the screenshot (for instance, the screenshot only shows the main product photo, title, or all option chips are unselected/inactive):
+  * "hasSelectedFeatures" MUST be false.
+  * "selectedFeatures" fields (color, size, model, style, shape, combination) MUST all be null.
+  * "colors" MUST be an empty array [].
+  * Do NOT invent, assume, or default to any variant!
+
+OTHER FIELDS:
+1. "productName": Translate the product title into clear, attractive, professional English. Remove spammy supplier keywords ("工厂直销", "跨境热销", "一件代发").
+2. "priceCNY": Extract the item price in Chinese Yuan (¥ / RMB). Return as a clean number (e.g. 45.5).
+3. "baseWeightKg": Extract the base product weight in kilograms ONLY if explicitly printed on the screenshot (e.g. "重量", "单件重量", "毛重", "500g" -> 0.5, "350克" -> 0.35, "1.2kg" -> 1.2). If NOT written anywhere on the image, you MUST return null.
+4. "boundingBoxForProductImage": Bounding box coordinates {ymin, xmin, ymax, xmax} in 0-100 percentage for the primary product showcase photo.
+5. "platform": Detect "1688", "AliExpress", "Pinduoduo", "Taobao", or "Other".
 
 You MUST strictly return a valid JSON object matching this schema:
 {
-  "productName": "Translated English name of the product",
-  "colors": ["Color 1 in English", "Color 2 in English"],
-  "priceCNY": 45.50,
-  "baseWeightKg": null,
-  "boundingBoxForProductImage": {
-    "ymin": 12,
-    "xmin": 8,
-    "ymax": 58,
-    "xmax": 92
+  "productName": "English title",
+  "hasSelectedFeatures": true,
+  "selectedFeatures": {
+    "color": "Matte Black",
+    "size": "XL",
+    "model": "Pro Edition",
+    "style": "Hooded",
+    "shape": null,
+    "combination": "1 Host + 2 Batteries",
+    "rawSelectedText": "已选: 黑色, XL, 升级款"
   },
+  "colors": ["Color: Matte Black", "Size: XL", "Model: Pro Edition"],
+  "priceCNY": 45.50,
+  "baseWeightKg": 0.35,
+  "boundingBoxForProductImage": { "ymin": 12, "xmin": 8, "ymax": 58, "xmax": 92 },
   "platform": "1688"
 }`;
 
@@ -99,7 +134,7 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = (formData.get('file') || formData.get('image') || formData.get('screenshot')) as File | null;
     const rateParam = formData.get('cnyRate') || formData.get('exchangeRate');
-    const exchangeRate = Number(rateParam) > 0 ? Number(rateParam) : 17.5;
+    const exchangeRate = Number(rateParam) > 0 ? Number(rateParam) : 20.0;
 
     if (!file) {
       return NextResponse.json(
@@ -205,9 +240,39 @@ export async function POST(req: NextRequest) {
       ? Math.round(finalWeightKg * 1000)
       : null;
 
-    const colors = Array.isArray(extracted.colors) && extracted.colors.length > 0 
-      ? extracted.colors 
-      : ['Standard / Factory Original'];
+    // Build Structured Selected Features (Color, Size, Model, Style, Shape, Combination)
+    const rawSel = extracted.selectedFeatures || {};
+    const summaryList: string[] = [];
+    if (rawSel.color) summaryList.push(`Color: ${rawSel.color}`);
+    if (rawSel.size) summaryList.push(`Size: ${rawSel.size}`);
+    if (rawSel.model) summaryList.push(`Model: ${rawSel.model}`);
+    if (rawSel.style) summaryList.push(`Style: ${rawSel.style}`);
+    if (rawSel.shape) summaryList.push(`Shape: ${rawSel.shape}`);
+    if (rawSel.combination) summaryList.push(`Combo: ${rawSel.combination}`);
+
+    // If summaryList is empty but raw extracted.colors has items (without old generic placeholders), use them
+    if (summaryList.length === 0 && Array.isArray(extracted.colors) && extracted.colors.length > 0) {
+      extracted.colors.forEach((c) => {
+        if (c && !c.toLowerCase().includes('factory original') && !c.toLowerCase().includes('standard edition')) {
+          summaryList.push(c);
+        }
+      });
+    }
+
+    const hasSelectedFeatures = extracted.hasSelectedFeatures !== undefined
+      ? Boolean(extracted.hasSelectedFeatures && summaryList.length > 0)
+      : summaryList.length > 0;
+
+    const selectedFeatures = {
+      color: rawSel.color || null,
+      size: rawSel.size || null,
+      model: rawSel.model || null,
+      style: rawSel.style || null,
+      shape: rawSel.shape || null,
+      combination: rawSel.combination || null,
+      rawSelectedText: rawSel.rawSelectedText || null,
+      summaryList: hasSelectedFeatures ? summaryList : [],
+    };
 
     const productName = extracted.productName?.trim() || 'Chinese E-Commerce Sourced Product';
 
@@ -219,7 +284,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       productName,
-      colors,
+      hasSelectedFeatures,
+      selectedFeatures,
+      colors: hasSelectedFeatures ? summaryList : [],
       priceCNY,
       baseWeightKg,
       boundingBoxForProductImage: boundingBox,
@@ -290,7 +357,14 @@ function generateSmartFallback(filename: string): RawGeminiExtraction {
   if (lower.includes('watch') || lower.includes('smart')) {
     return {
       productName: 'Ultra 8 NFC Smart Watch with HD AMOLED Display & Waterproof Strap',
-      colors: ['Space Gray', 'Starlight Silver', 'Alpine Orange', 'Midnight Black'],
+      hasSelectedFeatures: true,
+      selectedFeatures: {
+        color: 'Midnight Black',
+        model: 'Ultra 8 Series',
+        combination: 'Standard 49mm + Orange Alpine Loop',
+        rawSelectedText: '已选: 黑色 + 橙色高山回环表带',
+      },
+      colors: ['Color: Midnight Black', 'Model: Ultra 8 Series', 'Combo: 49mm + Orange Alpine Loop'],
       priceCNY: 48.0,
       baseWeightKg: 0.16,
       boundingBoxForProductImage: { ymin: 12, xmin: 15, ymax: 62, xmax: 85 },
@@ -299,26 +373,34 @@ function generateSmartFallback(filename: string): RawGeminiExtraction {
   } else if (lower.includes('shoe') || lower.includes('sneaker')) {
     return {
       productName: 'Breathable Lightweight Running Shoes Anti-Slip Sports Sneakers',
-      colors: ['Triple Black', 'Pure White', 'Slate Gray', 'Navy Blue'],
+      hasSelectedFeatures: true,
+      selectedFeatures: {
+        color: 'Triple Black',
+        size: '43 EU',
+        rawSelectedText: '已选: 纯黑透气款, 43码',
+      },
+      colors: ['Color: Triple Black', 'Size: 43 EU'],
       priceCNY: 65.0,
       baseWeightKg: 0.75,
       boundingBoxForProductImage: { ymin: 15, xmin: 10, ymax: 68, xmax: 90 },
       platform: 'Pinduoduo',
     };
-  } else if (lower.includes('headphone') || lower.includes('earphone') || lower.includes('audio')) {
-    return {
-      productName: 'Active Noise Cancelling Wireless Bluetooth Headphones with HiFi Audio',
-      colors: ['Matte Black', 'Pearl White', 'Rose Gold'],
-      priceCNY: 52.5,
-      baseWeightKg: 0.32,
-      boundingBoxForProductImage: { ymin: 10, xmin: 18, ymax: 64, xmax: 82 },
-      platform: 'AliExpress',
-    };
   }
 
+  // If screenshot does not indicate specific selected options
   return {
     productName: 'Multi-functional High Quality Consumer Electronics & Sourcing Item',
-    colors: ['Obsidian Black', 'Titanium Silver', 'Crystal Blue'],
+    hasSelectedFeatures: false,
+    selectedFeatures: {
+      color: null,
+      size: null,
+      model: null,
+      style: null,
+      shape: null,
+      combination: null,
+      rawSelectedText: null,
+    },
+    colors: [],
     priceCNY: 45.5,
     baseWeightKg: null,
     boundingBoxForProductImage: { ymin: 12, xmin: 12, ymax: 60, xmax: 88 },

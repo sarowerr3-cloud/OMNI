@@ -10,7 +10,7 @@ class CostEngine:
         self,
         rate_rmb_bdt: Decimal = Decimal("20.00"),
         rate_usd_bdt: Decimal = Decimal("120.00"),
-        air_rate_per_kg: Decimal = Decimal("1000.00"),  # ৳1000/kg by air
+        air_rate_per_kg: Decimal = Decimal("1200.00"),  # ৳1.2/gm = ৳1200/kg by air
         sea_rate_per_kg: Decimal = Decimal("300.00"),   # ৳300/kg by sea
         duty_vat_percent: Decimal = Decimal("15.00"),    # 15% estimated duty/tax
         agent_fee_percent: Decimal = Decimal("5.00")      # 5% sourcing agent fee

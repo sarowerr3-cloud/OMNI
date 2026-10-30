@@ -250,7 +250,7 @@ export default function ProductPriceCalculator({
   };
 
   return (
-    <div style={{ width: '100%', maxWidth: '720px', margin: '0 auto', padding: '0 1rem' }}>
+    <div className="content-container" style={{ maxWidth: '780px' }}>
       {/* Toast Notification */}
       {toastMsg && (
         <div style={{
