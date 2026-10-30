@@ -286,7 +286,10 @@ export default function SmartScreenshotExtractor({
       }
     } catch (err: any) {
       console.error('Failed to analyze screenshot:', err);
-      const msg = err.message || 'Failed to analyze screenshot with AI Vision';
+      let msg = err.message || 'Failed to analyze screenshot with AI Vision';
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed')) {
+        msg = 'Connection error: Server was unreachable. Please refresh and try again.';
+      }
       setErrorMessage(msg);
       if (showToast) showToast(`❌ ${msg}`);
     } finally {
