@@ -151,7 +151,7 @@ export default function ProductItemForm({
   };
 
   const handleAutoFillFromScreenshot = (data: ExtractedProductData) => {
-    if (!data.isProductScreenshot || data.productName === 'No data found') {
+    if (data.isProductScreenshot === false && !data.priceCNY && !data.hasSelectedFeatures) {
       showToast('⚠️ No product details detected in this screenshot to auto-fill.');
       return;
     }
@@ -214,7 +214,7 @@ export default function ProductItemForm({
   };
 
   const handleAddDirectlyToListFromScreenshot = (data: ExtractedProductData) => {
-    if (!data.isProductScreenshot || data.productName === 'No data found') {
+    if (data.isProductScreenshot === false && !data.priceCNY && !data.hasSelectedFeatures) {
       showToast('⚠️ Cannot add product: No product or pricing data found in screenshot. Please enter details manually.');
       return;
     }

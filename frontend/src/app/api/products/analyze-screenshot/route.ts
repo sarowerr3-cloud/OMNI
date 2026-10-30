@@ -36,11 +36,15 @@ interface RawGeminiExtraction {
 }
 
 const EXTRACTION_SYSTEM_PROMPT = `You are an expert AI sourcing vision analyst for Chinese e-commerce platforms (1688.com, AliExpress, Pinduoduo, Taobao, Weidian).
-Analyze the provided image and extract structured information with extreme accuracy and ZERO hallucination or fabrication.
+Analyze the provided image and extract structured information with extreme accuracy and ZERO hallucination.
 
-CRITICAL NON-PRODUCT / RANDOM IMAGE DETECTION RULE:
-- First, evaluate whether the provided image is genuinely an e-commerce product screenshot or product listing page (such as 1688, Taobao, Pinduoduo, AliExpress, or similar online shop).
-- If the image is NOT an e-commerce product screenshot (for example: a personal photo, scenery, random document, meme, chart, app UI, receipt without product details, or unrelated graphic):
+E-COMMERCE SCREENSHOT TYPES TO RECOGNIZE (isProductScreenshot: true):
+1. Main Product Listing / Detail Page: Displays product title, large showcase photo, price range or single price, supplier info.
+2. SKU / Variant Selection Drawer (选规格 / 立即购买弹窗): In mobile apps (1688, Taobao, Pinduoduo, Weidian, AliExpress), when a buyer selects color/size options, a popup or bottom drawer sheet opens with a dark/dim backdrop on top. The drawer contains the product thumbnail, price (e.g. ¥58.9 or ¥68.0), selected text (e.g. '已选: 黑色, 40'), and option buttons (color thumbnails, size buttons, quantity). THIS IS 100% A VALID E-COMMERCE PRODUCT SCREENSHOT (isProductScreenshot: true)!
+   - If a formal title is not explicitly written on the drawer, identify the product from the visible thumbnail photo and options, and provide a clear, descriptive English product title (e.g. "Lightweight Breathable Running Shoes", "Casual Mesh Sports Sneakers", "Women's Retro Mary Jane Shoes"). Do NOT return "No data found" when a real product and price are clearly present in the drawer!
+
+CRITICAL NON-PRODUCT / IRRELEVANT IMAGE DETECTION:
+- If the image is genuinely NOT an e-commerce product or shopping page (for example: a personal selfie, landscape photo, document, meme, chart, accounting software, app settings UI, or empty graphic):
   * "isProductScreenshot": false
   * "productName": "No data found"
   * "hasSelectedFeatures": false
@@ -53,27 +57,28 @@ CRITICAL NON-PRODUCT / RANDOM IMAGE DETECTION RULE:
   * Return this immediately without fabricating any product, price, or details!
 
 CRITICAL PRICE EXTRACTION RULE (ABSOLUTE NO FABRICATION):
-- ONLY extract "priceCNY" if a specific price in Chinese Yuan (¥ / RMB) or unit price is CLEARLY and EXPLICITLY visible on the screenshot.
-- Look for numeric values adjacent to "¥", "￥", "RMB", "元", or in the primary price display block.
+- ONLY extract "priceCNY" if a specific price in Chinese Yuan (¥ / ￥ / RMB / 元) or unit price is CLEARLY and EXPLICITLY visible on the screenshot (including inside the SKU drawer or price header).
+- Look for numeric values adjacent to "¥", "￥", "RMB", "元", or in the primary price display block (e.g. "¥58.9", "¥68.00").
 - If no price is visibly shown or legible on the screenshot, you MUST set "priceCNY": null.
 - NEVER invent, estimate, guess, or default to any price! If missing, return null.
 
 CRITICAL PRODUCT TITLE / NAME RULE:
 - "productName": Extract and translate the product title into clear, attractive, professional English. Remove spammy supplier keywords ("工厂直销", "跨境热销", "一件代发").
-- If there is NO visible product title, or the image is not a product, return "No data found". NEVER invent or assume a product title.
+- For SKU selection drawers where the full title is obscured, generate an accurate English title based on the product photo and specs (e.g. "Athletic Running Shoes").
+- If the image is completely unrelated to products, return "No data found".
 
 CRITICAL FEATURE SELECTION RULES (COLOR, SIZE, MODEL, STYLE, SHAPE, COMBINATIONS):
 - In Chinese e-commerce screenshots, users often select specific options before purchasing. You must identify ONLY the specific features that are ACTIVELY SELECTED or INDICATED in the screenshot.
 - Features to extract:
-  1. "color": Selected color name in English (e.g. "Matte Black", "Cream White", "Navy Blue")
-  2. "size": Selected size/dimension (e.g. "XL", "42 EU", "120cm x 60cm", "500ml")
+  1. "color": Selected color name in English (e.g. "Matte Black", "Cream White", "Sapphire Blue")
+  2. "size": Selected size/dimension (e.g. "XL", "41 EU", "120cm x 60cm", "500ml")
   3. "model": Selected device/specification model (e.g. "Pro Max Edition", "Type-C Fast Charge", "Upgraded 2026")
   4. "style": Selected style/pattern (e.g. "Hooded Thickened", "Round Collar", "Striped")
   5. "shape": Selected shape/geometry (e.g. "Round", "Square", "Oval", "Curved")
   6. "combination": Selected package bundle or combo (e.g. "1 Host + 2 Batteries + Fast Charger", "Pack of 5", "Gift Box")
 
 HOW TO RECOGNIZE WHAT IS ACTIVELY SELECTED (VISUAL ANCHORS):
-- Look for the Chinese summary text: "已选" (Selected) or "已选择" (e.g., "已选: 曜石黑, XL, 旗舰版"). Anything following "已选" is 100% the selected feature combination!
+- Look for the Chinese summary text: "已选" (Selected) or "已选择" (e.g., "已选: 黑色, 41"). Anything following "已选" is 100% the selected feature combination!
 - Look for visual button/chip indicators:
   * An active colored border (typically bright orange #ff5000, red #e02e24, or cyan/blue border) while other unselected options have pale grey or white borders.
   * A filled colored background or bold text on a specific option button.
@@ -83,7 +88,7 @@ HOW TO RECOGNIZE WHAT IS ACTIVELY SELECTED (VISUAL ANCHORS):
 - If an option is selected, translate it into clean, professional English.
 
 STRICT NEGATIVE RULE FOR FEATURES:
-- If NO feature is selected, highlighted, or indicated in the screenshot (for instance, the screenshot only shows the main product photo, title, or all option chips are unselected/inactive):
+- If NO feature is selected, highlighted, or indicated in the screenshot (for instance, all option chips are unselected/inactive):
   * "hasSelectedFeatures" MUST be false.
   * "selectedFeatures" fields (color, size, model, style, shape, combination) MUST all be null.
   * "colors" MUST be an empty array [].
@@ -91,28 +96,28 @@ STRICT NEGATIVE RULE FOR FEATURES:
 
 OTHER FIELDS:
 - "baseWeightKg": Extract the base product weight in kilograms ONLY if explicitly printed on the screenshot (e.g. "重量", "单件重量", "毛重", "500g" -> 0.5, "350克" -> 0.35, "1.2kg" -> 1.2). If NOT written anywhere on the image, you MUST return null.
-- "boundingBoxForProductImage": Bounding box coordinates {ymin, xmin, ymax, xmax} in 0-100 percentage for the primary product showcase photo. If no product photo is present, return null.
+- "boundingBoxForProductImage": Bounding box coordinates {ymin, xmin, ymax, xmax} in 0-100 percentage for the primary product showcase photo or thumbnail. If no product photo is present, return null.
 - "platform": Detect "1688", "AliExpress", "Pinduoduo", "Taobao", or "Other".
 
 You MUST strictly return a valid JSON object matching this schema:
 {
   "isProductScreenshot": true,
-  "productName": "English title or No data found",
+  "productName": "English title or descriptive product name",
   "hasSelectedFeatures": true,
   "selectedFeatures": {
-    "color": "Matte Black",
-    "size": "XL",
-    "model": "Pro Edition",
-    "style": "Hooded",
+    "color": "Sapphire Blue",
+    "size": "41",
+    "model": null,
+    "style": null,
     "shape": null,
-    "combination": "1 Host + 2 Batteries",
-    "rawSelectedText": "已选: 黑色, XL, 升级款"
+    "combination": null,
+    "rawSelectedText": "已选: 蓝, 41"
   },
-  "colors": ["Color: Matte Black", "Size: XL", "Model: Pro Edition"],
-  "priceCNY": 45.50,
-  "baseWeightKg": 0.35,
-  "boundingBoxForProductImage": { "ymin": 12, "xmin": 8, "ymax": 58, "xmax": 92 },
-  "platform": "1688"
+  "colors": ["Color: Sapphire Blue", "Size: 41"],
+  "priceCNY": 68.90,
+  "baseWeightKg": null,
+  "boundingBoxForProductImage": { "ymin": 10, "xmin": 17, "ymax": 34, "xmax": 88 },
+  "platform": "Pinduoduo"
 }`;
 
 /**
@@ -182,14 +187,16 @@ export async function POST(req: NextRequest) {
     if (isValidKey && apiKey) {
       const ai = new GoogleGenAI({ apiKey });
 
-      // Fallback model chain prioritizing active, high-speed vision models
-      const candidateModels = [
+      // Model priority: start with stable, high-quota models, then fall back to preview/lite tiers
+      const candidateModels = Array.from(new Set([
         process.env.GEMINI_MODEL,
-        'gemini-3-flash-preview',
         'gemini-3.5-flash',
+        'gemini-3.1-flash-lite',
+        'gemini-flash-lite-latest',
+        'gemini-3-flash-preview',
         'gemini-3.8-flash',
         'gemini-flash-latest',
-      ].filter(Boolean) as string[];
+      ].filter(Boolean))) as string[];
 
       let lastError: any = null;
 
@@ -226,7 +233,7 @@ export async function POST(req: NextRequest) {
             if (extracted && (extracted.isProductScreenshot !== undefined || extracted.productName || extracted.priceCNY !== undefined)) {
               usedModel = modelName;
               isAiLive = true;
-              console.log(`[Gemini Vision] Successfully extracted with ${modelName}:`, extracted.productName);
+              console.log(`[Gemini Vision] Successfully extracted with ${modelName}:`, extracted.productName || '(SKU drawer)');
               break;
             }
           }
@@ -238,6 +245,19 @@ export async function POST(req: NextRequest) {
 
       if (!isAiLive) {
         console.error('[Gemini Vision] All Gemini models failed or timed out:', lastError);
+        const errMsg = lastError?.message || '';
+        if (errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('Quota')) {
+          return NextResponse.json(
+            { error: 'AI Vision API rate limit reached. Please wait a few moments and try again.' },
+            { status: 429 }
+          );
+        }
+        if (errMsg.includes('503') || errMsg.includes('UNAVAILABLE')) {
+          return NextResponse.json(
+            { error: 'AI Vision servers are temporarily busy. Please retry in a few seconds.' },
+            { status: 503 }
+          );
+        }
         extracted = generateSmartFallback(file.name);
       }
     } else {
@@ -245,13 +265,35 @@ export async function POST(req: NextRequest) {
       extracted = generateSmartFallback(file.name);
     }
 
-    // Business Logic Calculations (Zero Fabrication / Strict Verification)
-    const isProduct = extracted.isProductScreenshot !== false &&
-      Boolean(extracted.productName && extracted.productName.trim().toLowerCase() !== 'no data found');
+    // Build Structured Selected Features (Color, Size, Model, Style, Shape, Combination)
+    const rawSel = extracted.selectedFeatures || {};
+    const summaryList: string[] = [];
+    if (rawSel.color) summaryList.push(`Color: ${rawSel.color}`);
+    if (rawSel.size) summaryList.push(`Size: ${rawSel.size}`);
+    if (rawSel.model) summaryList.push(`Model: ${rawSel.model}`);
+    if (rawSel.style) summaryList.push(`Style: ${rawSel.style}`);
+    if (rawSel.shape) summaryList.push(`Shape: ${rawSel.shape}`);
+    if (rawSel.combination) summaryList.push(`Combo: ${rawSel.combination}`);
+
+    // If summaryList is empty but raw extracted.colors has items (without generic placeholders), use them
+    if (summaryList.length === 0 && Array.isArray(extracted.colors) && extracted.colors.length > 0) {
+      extracted.colors.forEach((c) => {
+        if (c && !c.toLowerCase().includes('factory original') && !c.toLowerCase().includes('standard edition') && !c.toLowerCase().includes('no features')) {
+          summaryList.push(c);
+        }
+      });
+    }
+
+    const hasPrice = typeof extracted.priceCNY === 'number' && extracted.priceCNY > 0;
+    const hasValidTitle = Boolean(extracted.productName && extracted.productName.trim().toLowerCase() !== 'no data found');
+    const hasFeatures = summaryList.length > 0 || extracted.hasSelectedFeatures === true;
+
+    // Genuine product check: true if AI identified it as an e-commerce screenshot OR if a real price/features were detected
+    const isProduct = extracted.isProductScreenshot !== false && (hasValidTitle || hasPrice || hasFeatures);
 
     // Price Calculation: ONLY accept explicit positive numbers; do NOT fallback to 45.5!
-    const priceCNY = (isProduct && typeof extracted.priceCNY === 'number' && extracted.priceCNY > 0)
-      ? extracted.priceCNY
+    const priceCNY = (isProduct && hasPrice)
+      ? extracted.priceCNY!
       : null;
     const priceBDT = priceCNY !== null
       ? Math.round(priceCNY * exchangeRate * 100) / 100
@@ -259,11 +301,9 @@ export async function POST(req: NextRequest) {
 
     // Weight Calculation:
     // Only extract and calculate weight if explicitly identified in the screenshot.
-    // If not found, leave baseWeightKg, finalWeightKg, and finalWeightGm as null so the form field remains empty for manual input.
     const baseWeightKg: number | null = (isProduct && typeof extracted.baseWeightKg === 'number' && extracted.baseWeightKg > 0)
       ? extracted.baseWeightKg
       : null;
-    // Final Calculated Weight = Base Weight × 1.2 (+20% safety factor for packaging/carton)
     const finalWeightKg: number | null = baseWeightKg !== null
       ? Math.round(baseWeightKg * 1.2 * 1000) / 1000
       : null;
@@ -271,30 +311,7 @@ export async function POST(req: NextRequest) {
       ? Math.round(finalWeightKg * 1000)
       : null;
 
-    // Build Structured Selected Features (Color, Size, Model, Style, Shape, Combination)
-    const rawSel = extracted.selectedFeatures || {};
-    const summaryList: string[] = [];
-    if (isProduct) {
-      if (rawSel.color) summaryList.push(`Color: ${rawSel.color}`);
-      if (rawSel.size) summaryList.push(`Size: ${rawSel.size}`);
-      if (rawSel.model) summaryList.push(`Model: ${rawSel.model}`);
-      if (rawSel.style) summaryList.push(`Style: ${rawSel.style}`);
-      if (rawSel.shape) summaryList.push(`Shape: ${rawSel.shape}`);
-      if (rawSel.combination) summaryList.push(`Combo: ${rawSel.combination}`);
-
-      // If summaryList is empty but raw extracted.colors has items (without generic placeholders), use them
-      if (summaryList.length === 0 && Array.isArray(extracted.colors) && extracted.colors.length > 0) {
-        extracted.colors.forEach((c) => {
-          if (c && !c.toLowerCase().includes('factory original') && !c.toLowerCase().includes('standard edition') && !c.toLowerCase().includes('no features')) {
-            summaryList.push(c);
-          }
-        });
-      }
-    }
-
-    const hasSelectedFeatures = isProduct && extracted.hasSelectedFeatures !== undefined
-      ? Boolean(extracted.hasSelectedFeatures && summaryList.length > 0)
-      : Boolean(isProduct && summaryList.length > 0);
+    const hasSelectedFeatures = isProduct && hasFeatures && summaryList.length > 0;
 
     const selectedFeatures = {
       color: isProduct ? (rawSel.color || null) : null,
@@ -307,9 +324,16 @@ export async function POST(req: NextRequest) {
       summaryList: hasSelectedFeatures ? summaryList : [],
     };
 
-    const productName = isProduct
-      ? (extracted.productName?.trim() || 'No data found')
-      : 'No data found';
+    let productName = 'No data found';
+    if (isProduct) {
+      if (hasValidTitle) {
+        productName = extracted.productName!.trim();
+      } else if (hasSelectedFeatures) {
+        productName = `Sourced E-Commerce Item (${summaryList.join(', ')})`;
+      } else {
+        productName = 'Imported Sourced Product';
+      }
+    }
 
     // Normalize bounding box to 0-100 percentage range (only if real product photo detected)
     const rawBox = isProduct ? extracted.boundingBoxForProductImage : undefined;

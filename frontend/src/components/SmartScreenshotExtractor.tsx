@@ -303,7 +303,7 @@ export default function SmartScreenshotExtractor({
    */
   const handleApplyToForm = () => {
     if (!extractedData) return;
-    if (!extractedData.isProductScreenshot || extractedData.productName === 'No data found') {
+    if (extractedData.isProductScreenshot === false && !extractedData.priceCNY && !extractedData.hasSelectedFeatures) {
       if (showToast) showToast('⚠️ No product data detected to auto-fill.');
       return;
     }
@@ -740,7 +740,7 @@ export default function SmartScreenshotExtractor({
                 {/* Result Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #27272a', paddingBottom: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    {extractedData.isProductScreenshot !== false && extractedData.productName !== 'No data found' ? (
+                    {extractedData.isProductScreenshot !== false ? (
                       <>
                         <CheckCircle2 style={{ width: '18px', height: '18px', color: '#10b981' }} />
                         <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#f8fafc' }}>
@@ -770,8 +770,8 @@ export default function SmartScreenshotExtractor({
                   </span>
                 </div>
 
-                {/* Non-Product Warning Banner if no data found */}
-                {(!extractedData.isProductScreenshot || extractedData.productName === 'No data found') && (
+                {/* Non-Product Warning Banner only if genuinely not a product */}
+                {!extractedData.isProductScreenshot && (
                   <div
                     style={{
                       padding: '8px 12px',
@@ -1054,7 +1054,7 @@ export default function SmartScreenshotExtractor({
                     <button
                       type="button"
                       onClick={() => {
-                        if (!extractedData.isProductScreenshot || extractedData.productName === 'No data found') {
+                        if (extractedData.isProductScreenshot === false && !extractedData.priceCNY && !extractedData.hasSelectedFeatures) {
                           if (showToast) showToast('⚠️ Cannot add: No product data detected in screenshot.');
                           return;
                         }

@@ -127,7 +127,7 @@ export default function CustomerOrderModal({
 
   // Handle auto-fill from AI Smart Screenshot Extractor
   const handleAutoFillFromScreenshot = useCallback((data: ExtractedProductData) => {
-    if (!data.isProductScreenshot || data.productName === 'No data found') {
+    if (data.isProductScreenshot === false && !data.priceCNY && !data.hasSelectedFeatures) {
       showToast('⚠️ No product details detected in this screenshot to auto-fill.');
       return;
     }

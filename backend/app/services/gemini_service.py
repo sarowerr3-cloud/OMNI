@@ -150,6 +150,9 @@ class GeminiService:
         prompt = (
             "You are an expert AI sourcing vision analyst for Chinese e-commerce platforms (1688.com, AliExpress, Pinduoduo, Taobao).\n"
             "Analyze the provided image and extract structured information with extreme accuracy and ZERO fabrication.\n\n"
+            "E-COMMERCE SCREENSHOT TYPES TO RECOGNIZE (isProductScreenshot: true):\n"
+            "1. Main Product Listing / Detail Page: Displays product title, showcase photo, price, supplier info.\n"
+            "2. SKU / Variant Selection Drawer (选规格 / 立即购买弹窗): In mobile apps, when picking color/size, a drawer opens with dark backdrop on top. It shows thumbnail photo, price (e.g. ¥58.9 or ¥68.0), selected text ('已选: 黑色, 40'), and option buttons. THIS IS 100% A VALID PRODUCT SCREENSHOT (isProductScreenshot: true)! If formal title is obscured, generate a descriptive English title from photo & options (e.g. 'Lightweight Breathable Running Shoes').\n\n"
             "CRITICAL NON-PRODUCT / RANDOM IMAGE DETECTION:\n"
             "- If the image is NOT an e-commerce product screenshot (e.g. personal photo, scenery, random document, app UI, meme, chart, or receipt without product details):\n"
             "  * Set 'isProductScreenshot': false\n"
@@ -160,7 +163,7 @@ class GeminiService:
             "  * Set 'boundingBoxForProductImage': null\n"
             "  * Return immediately without fabricating data.\n\n"
             "REQUIREMENTS:\n"
-            "1. 'productName': Translate the Chinese or foreign product title into a clear, professional English product title. If missing or not a product, return 'No data found'.\n"
+            "1. 'productName': Translate or describe the product in clear, professional English. If completely unrelated, return 'No data found'.\n"
             "2. 'colors': Extract ONLY actively selected color, model, or style variants indicated in the screenshot. If none selected, return empty list [].\n"
             "3. 'priceCNY': Extract the item price in Chinese Yuan (CNY / RMB ¥) as a number ONLY if visibly and explicitly printed on the screenshot. If no price is clearly printed, return null. NEVER fabricate a price.\n"
             "4. 'baseWeightKg': Extract base weight in kg ONLY if explicitly printed on the screenshot. If not found, return null.\n"
@@ -169,9 +172,9 @@ class GeminiService:
             "You MUST strictly return a valid JSON object matching this schema:\n"
             "{\n"
             '  "isProductScreenshot": true,\n'
-            '  "productName": "Translated English name of the product or No data found",\n'
+            '  "productName": "Descriptive English name of the product",\n'
             '  "colors": ["Selected variant in English"],\n'
-            '  "priceCNY": 45.50,\n'
+            '  "priceCNY": 68.90,\n'
             '  "baseWeightKg": null,\n'
             '  "boundingBoxForProductImage": {\n'
             '    "ymin": 12,\n'
@@ -179,7 +182,7 @@ class GeminiService:
             '    "ymax": 60,\n'
             '    "xmax": 88\n'
             '  },\n'
-            '  "platform": "1688"\n'
+            '  "platform": "Pinduoduo"\n'
             "}"
         )
 
@@ -200,10 +203,14 @@ class GeminiService:
                 )
                 import json
                 data = json.loads(response.text)
-                is_product = data.get("isProductScreenshot", True) and data.get("productName", "").lower() != "no data found"
-                
                 raw_price = data.get("priceCNY")
-                price_cny = float(raw_price) if (is_product and isinstance(raw_price, (int, float)) and raw_price > 0) else None
+                has_price = isinstance(raw_price, (int, float)) and raw_price > 0
+                has_title = bool(data.get("productName") and data.get("productName").lower() != "no data found")
+                has_variants = bool(data.get("colors"))
+                
+                is_product = data.get("isProductScreenshot", True) and (has_title or has_price or has_variants)
+                
+                price_cny = float(raw_price) if (is_product and has_price) else None
                 price_bdt = round(price_cny * exchange_rate, 2) if price_cny is not None else None
 
                 raw_weight = data.get("baseWeightKg")
@@ -212,9 +219,13 @@ class GeminiService:
                 final_weight = round(base_weight * 1.2, 3) if base_weight is not None else None
                 final_weight_gm = int(round(final_weight * 1000)) if final_weight is not None else None
 
+                name = data.get("productName", "No data found")
+                if is_product and (not name or name.lower() == "no data found"):
+                    name = "Imported Sourced Product"
+
                 return {
                     "isProductScreenshot": is_product,
-                    "productName": data.get("productName", "No data found") if is_product else "No data found",
+                    "productName": name if is_product else "No data found",
                     "colors": (data.get("colors") or []) if is_product else [],
                     "priceCNY": price_cny,
                     "baseWeightKg": base_weight,
