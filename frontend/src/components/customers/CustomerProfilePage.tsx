@@ -30,14 +30,16 @@ import {
   ExternalLink,
   Tag,
   AlertCircle,
-  RotateCcw
+  RotateCcw,
+  FileText
 } from 'lucide-react';
 import { Customer, CustomerOrder, CustomerPayload } from '@/types/customer';
 import { ProfileFolder, FolderProduct, calculateFolderFinancials, ProductStatus } from '@/types/profileFolder';
 import { profileFolderService } from '@/services/profileFolderService';
 import ViewModeToggle, { ViewMode } from '@/components/shared/ViewModeToggle';
 import { getWhatsappShareUrl, formatWhatsappPhone } from '@/utils/customerMessaging';
-import { exportSingleCustomerOrdersToExcel } from '@/lib/excelExport';
+import { exportSingleCustomerOrdersToExcel, exportFolderToExcel, exportAllFoldersProductsToExcel } from '@/lib/excelExport';
+import { exportFolderToPdf } from '@/lib/pdfExport';
 import SmartScreenshotExtractor from '@/components/SmartScreenshotExtractor';
 import { ExtractedProductData } from '@/types/screenshotExtractor';
 import { compressImageFile, formatExternalUrl } from '@/lib/imageUtils';
@@ -356,6 +358,129 @@ export default function CustomerProfilePage({
   const totalBdtValue = useMemo(() => {
     return Math.round(totalRmbValue * customerRmbRate);
   }, [totalRmbValue, customerRmbRate]);
+
+  // Export Loading States & Current Selected Folder
+  const [isExportingExcel, setIsExportingExcel] = useState<boolean>(false);
+  const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
+
+  const selectedFolder = useMemo(() => {
+    if (folderFilter === 'all') return null;
+    return folders.find((f) => f.id === folderFilter) || null;
+  }, [folders, folderFilter]);
+
+  const handleExportFolderToExcel = (folderToExport: ProfileFolder) => {
+    try {
+      setIsExportingExcel(true);
+      exportFolderToExcel(
+        folderToExport,
+        {
+          name: customer.name,
+          phone: customer.phone,
+          address: customer.address,
+          group: customer.category,
+        },
+        customerFreightRate,
+        customerFreightUnit
+      );
+      showToast(`📊 Exported folder ${folderToExport.orderNumber} to Excel!`);
+    } catch (err: any) {
+      showToast(`❌ Excel export failed: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
+  const handleExportFolderToPdf = async (folderToExport: ProfileFolder) => {
+    try {
+      setIsExportingPdf(true);
+      await exportFolderToPdf({
+        folder: folderToExport,
+        customer: {
+          name: customer.name,
+          phone: customer.phone,
+          address: customer.address,
+          group: customer.category,
+        },
+        freightRate: customerFreightRate,
+        freightUnit: customerFreightUnit,
+      });
+      showToast(`📄 Exported folder ${folderToExport.orderNumber} to PDF!`);
+    } catch (err: any) {
+      showToast(`❌ PDF export failed: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
+  const handleExportCurrentProductsExcel = () => {
+    if (allFolderProducts.length === 0) {
+      showToast('⚠️ No products in folder to export');
+      return;
+    }
+    if (selectedFolder) {
+      handleExportFolderToExcel(selectedFolder);
+    } else {
+      try {
+        setIsExportingExcel(true);
+        exportAllFoldersProductsToExcel(
+          folders,
+          {
+            name: customer.name,
+            phone: customer.phone,
+            address: customer.address,
+            group: customer.category,
+          },
+          customerRmbRate,
+          customerFreightRate,
+          customerFreightUnit
+        );
+        showToast(`📊 Exported all ${allFolderProducts.length} products to Excel!`);
+      } catch (err: any) {
+        showToast(`❌ Excel export failed: ${err.message || 'Unknown error'}`);
+      } finally {
+        setIsExportingExcel(false);
+      }
+    }
+  };
+
+  const handleExportCurrentProductsPdf = async () => {
+    if (allFolderProducts.length === 0) {
+      showToast('⚠️ No products in folder to export');
+      return;
+    }
+    if (selectedFolder) {
+      await handleExportFolderToPdf(selectedFolder);
+    } else {
+      try {
+        setIsExportingPdf(true);
+        await exportFolderToPdf({
+          folder: {
+            orderNumber: `ALL-${(customer.name || 'CUST').slice(0, 4).toUpperCase()}`,
+            name: `All Folders Combined (${allFolderProducts.length} Items)`,
+            date: new Date().toISOString().slice(0, 10),
+            exchangeRate: customerRmbRate,
+            paidAmountTk: folders.reduce((sum, f) => sum + (f.paidAmountTk || 0), 0),
+            isDelivered: folders.every((f) => f.isDelivered),
+            note: `Consolidated order across ${folders.length} folder(s)`,
+            products: allFolderProducts,
+          },
+          customer: {
+            name: customer.name,
+            phone: customer.phone,
+            address: customer.address,
+            group: customer.category,
+          },
+          freightRate: customerFreightRate,
+          freightUnit: customerFreightUnit,
+        });
+        showToast(`📄 Exported all ${allFolderProducts.length} products to PDF!`);
+      } catch (err: any) {
+        showToast(`❌ PDF export failed: ${err.message || 'Unknown error'}`);
+      } finally {
+        setIsExportingPdf(false);
+      }
+    }
+  };
 
   // Create folder handler
   const handleCreateFolder = (e: React.FormEvent) => {
@@ -1290,7 +1415,55 @@ export default function CustomerProfilePage({
                         <span>Add Product</span>
                       </button>
 
-                      <div style={{ display: 'flex', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleExportFolderToExcel(folder)}
+                          disabled={isExportingExcel || folder.products.length === 0}
+                          style={{
+                            padding: '6px 9px',
+                            borderRadius: '8px',
+                            background: 'rgba(21, 128, 61, 0.12)',
+                            border: '1px solid rgba(21, 128, 61, 0.35)',
+                            color: '#15803d',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            cursor: folder.products.length === 0 ? 'not-allowed' : 'pointer',
+                            opacity: folder.products.length === 0 ? 0.5 : 1,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                          title={folder.products.length === 0 ? 'Folder has no products' : `Export ${folder.orderNumber} to Excel (.xlsx)`}
+                        >
+                          <FileSpreadsheet size={13} />
+                          <span>Excel</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleExportFolderToPdf(folder)}
+                          disabled={isExportingPdf || folder.products.length === 0}
+                          style={{
+                            padding: '6px 9px',
+                            borderRadius: '8px',
+                            background: 'rgba(2, 132, 199, 0.12)',
+                            border: '1px solid rgba(2, 132, 199, 0.35)',
+                            color: '#0284c7',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            cursor: folder.products.length === 0 ? 'not-allowed' : 'pointer',
+                            opacity: folder.products.length === 0 ? 0.5 : 1,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                          title={folder.products.length === 0 ? 'Folder has no products' : `Export ${folder.orderNumber} to PDF`}
+                        >
+                          <FileText size={13} />
+                          <span>PDF</span>
+                        </button>
+
                         <button
                           type="button"
                           onClick={() => {
@@ -1412,6 +1585,60 @@ export default function CustomerProfilePage({
               </div>
 
               <ViewModeToggle viewMode={productViewMode} onChange={setProductViewMode} />
+
+              {/* Export to Excel (.xlsx) */}
+              <button
+                type="button"
+                onClick={handleExportCurrentProductsExcel}
+                disabled={isExportingExcel || allFolderProducts.length === 0}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 13px',
+                  borderRadius: '8px',
+                  background: '#15803d',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: allFolderProducts.length === 0 ? 'not-allowed' : 'pointer',
+                  opacity: allFolderProducts.length === 0 ? 0.55 : 1,
+                  boxShadow: '0 2px 8px rgba(21, 128, 61, 0.28)',
+                  transition: 'all 0.15s ease',
+                }}
+                title={allFolderProducts.length === 0 ? 'No products in this folder to export' : `Export ${selectedFolder ? selectedFolder.orderNumber : 'all'} products to Excel (.xlsx)`}
+              >
+                <FileSpreadsheet size={14} />
+                <span>{isExportingExcel ? 'Exporting...' : 'Export to Excel'}</span>
+              </button>
+
+              {/* Export to PDF */}
+              <button
+                type="button"
+                onClick={handleExportCurrentProductsPdf}
+                disabled={isExportingPdf || allFolderProducts.length === 0}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 13px',
+                  borderRadius: '8px',
+                  background: '#0284c7',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: allFolderProducts.length === 0 ? 'not-allowed' : 'pointer',
+                  opacity: allFolderProducts.length === 0 ? 0.55 : 1,
+                  boxShadow: '0 2px 8px rgba(2, 132, 199, 0.28)',
+                  transition: 'all 0.15s ease',
+                }}
+                title={allFolderProducts.length === 0 ? 'No products in this folder to export' : `Export ${selectedFolder ? selectedFolder.orderNumber : 'all'} products to PDF`}
+              >
+                <FileText size={14} />
+                <span>{isExportingPdf ? 'Generating PDF...' : 'Export to PDF'}</span>
+              </button>
 
               <button
                 type="button"

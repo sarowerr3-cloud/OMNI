@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import { ProductItem, SavedProductList } from '@/components/ProductListBuilder';
 import { Customer, CustomerOrder } from '@/types/customer';
 import { ExtractedProductData } from '@/types/screenshotExtractor';
+import { ProfileFolder, FolderProduct } from '@/types/profileFolder';
 
 
 /**
@@ -918,4 +919,307 @@ export function exportExtractedProductToExcel(
 
   XLSX.writeFile(wb, filename);
 }
+
+/**
+ * Builds standard worksheet rows for a single profile folder
+ */
+export function buildFolderSheetData(
+  folder: ProfileFolder,
+  customer?: { name: string; phone?: string | null; address?: string | null; group?: string | null },
+  freightRate: number = 1.2,
+  freightUnit: 'per_gm' | 'per_kg' = 'per_gm'
+): (string | number)[][] {
+  const exchangeRate = folder.exchangeRate > 0 ? folder.exchangeRate : 20;
+  const products = folder.products || [];
+
+  const sheetData: (string | number)[][] = [
+    ['OMNI SOURCING PRO - CLIENT ORDER FOLDER MANIFEST'],
+    ['Customer Name:', customer?.name || 'Customer', 'Phone:', customer?.phone || 'N/A'],
+    ['Customer Group:', customer?.group || 'Standard', 'Delivery Address:', customer?.address || 'N/A'],
+    ['Folder / Order Ref:', `${folder.orderNumber} - ${folder.name}`, 'Order Date:', folder.date || new Date().toISOString().slice(0, 10)],
+    ['RMB Exchange Rate:', `1 RMB = ৳${exchangeRate.toFixed(2)} BDT`, 'Freight Rate Applied:', `৳${freightRate}/${freightUnit === 'per_gm' ? 'gm' : 'kg'}`],
+    ['Folder Status:', folder.isDelivered ? 'Delivered' : 'Active / Processing', 'Folder Note:', folder.note || 'None'],
+    [],
+    [
+      'SL #',
+      'Item Code',
+      'Product Title',
+      'Platform',
+      'Specifications / Variants / Notes',
+      'Unit Price (RMB ¥)',
+      'Quantity (pcs)',
+      'Total RMB (¥)',
+      'Product Cost (BDT ৳)',
+      'Unit Weight (kg)',
+      'Total Weight (kg)',
+      'Freight Cost (BDT ৳)',
+      'Landed Total (BDT ৳)',
+      'Item Status',
+      'Direct Product Link'
+    ]
+  ];
+
+  let sumQty = 0;
+  let sumTotalRmb = 0;
+  let sumProductBdt = 0;
+  let sumWeightKg = 0;
+  let sumFreightBdt = 0;
+  let sumLandedBdt = 0;
+
+  products.forEach((prod, idx) => {
+    const qty = Number(prod.quantity || 1);
+    const unitPriceRmb = Number(prod.priceRmb || 0);
+    const totalRmb = Number(prod.totalRmb || unitPriceRmb * qty);
+    const productBdt = Number(prod.equivalentTk || Math.round(totalRmb * exchangeRate));
+    const unitWeight = Number(prod.weightKg || 0);
+    const totalWeight = unitWeight * qty;
+
+    let lineFreight = 0;
+    if (prod.weightPriceTk !== undefined && prod.weightPriceTk > 0) {
+      lineFreight = Number(prod.weightPriceTk);
+    } else if (unitWeight > 0) {
+      lineFreight = freightUnit === 'per_gm'
+        ? Math.round(totalWeight * 1000 * freightRate)
+        : Math.round(totalWeight * freightRate);
+    }
+
+    const landedTotal = productBdt + lineFreight;
+    const isCancelled = prod.status === 'cancelled';
+
+    if (!isCancelled) {
+      sumQty += qty;
+      sumTotalRmb += totalRmb;
+      sumProductBdt += productBdt;
+      sumWeightKg += totalWeight;
+      sumFreightBdt += lineFreight;
+      sumLandedBdt += landedTotal;
+    }
+
+    sheetData.push([
+      idx + 1,
+      prod.assignedNumber || `${folder.orderNumber}-${prod.sequenceNumber || idx + 1}`,
+      prod.name || 'Untitled Product',
+      prod.platform || 'Pinduoduo / 1688',
+      prod.note || 'Standard',
+      unitPriceRmb,
+      qty,
+      Math.round(totalRmb * 100) / 100,
+      productBdt,
+      unitWeight > 0 ? Math.round(unitWeight * 1000) / 1000 : 'N/A',
+      totalWeight > 0 ? Math.round(totalWeight * 1000) / 1000 : 'N/A',
+      lineFreight > 0 ? lineFreight : 0,
+      landedTotal,
+      (prod.status || 'active').toUpperCase(),
+      prod.productUrl || ''
+    ]);
+  });
+
+  const paidAmount = Number(folder.paidAmountTk || 0);
+  const dueAmount = Math.max(0, sumLandedBdt - paidAmount);
+  const paymentStatus = paidAmount >= sumLandedBdt && sumLandedBdt > 0 ? 'PAID' : paidAmount > 0 ? 'PARTIAL' : 'UNPAID';
+
+  sheetData.push([]);
+  sheetData.push([
+    'FOLDER TOTALS',
+    `Total Items: ${products.length}`,
+    '',
+    '',
+    '',
+    '',
+    sumQty,
+    Math.round(sumTotalRmb * 100) / 100,
+    sumProductBdt,
+    '',
+    Math.round(sumWeightKg * 1000) / 1000,
+    sumFreightBdt,
+    sumLandedBdt,
+    paymentStatus,
+    ''
+  ]);
+
+  sheetData.push([]);
+  sheetData.push(['FINANCIAL SUMMARY & RECONCILIATION']);
+  sheetData.push(['Product Sourcing Subtotal (BDT ৳):', sumProductBdt]);
+  sheetData.push(['International Freight Subtotal (BDT ৳):', sumFreightBdt]);
+  sheetData.push(['Grand Total Landed Cost (BDT ৳):', sumLandedBdt]);
+  sheetData.push(['Advance Paid (BDT ৳):', paidAmount]);
+  sheetData.push(['Outstanding Due (BDT ৳):', dueAmount]);
+  sheetData.push(['Payment Status:', paymentStatus]);
+
+  return sheetData;
+}
+
+/**
+ * Export a single ProfileFolder to Excel (.xlsx)
+ */
+export function exportFolderToExcel(
+  folder: ProfileFolder,
+  customer?: { name: string; phone?: string | null; address?: string | null; group?: string | null },
+  freightRate: number = 1.2,
+  freightUnit: 'per_gm' | 'per_kg' = 'per_gm',
+  customFilename?: string
+): void {
+  const wb = XLSX.utils.book_new();
+  const sheetData = buildFolderSheetData(folder, customer, freightRate, freightUnit);
+  const ws = XLSX.utils.aoa_to_sheet(sheetData);
+  ws['!cols'] = calculateColumnWidths(sheetData);
+
+  const cleanOrderNum = (folder.orderNumber || 'ORD').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const sheetName = cleanOrderNum.slice(0, 31);
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+  const cleanCustName = (customer?.name || 'Customer').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20);
+  const cleanFolderName = (folder.name || 'Order').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 25);
+  const dateStr = folder.date || new Date().toISOString().slice(0, 10);
+  const filename = customFilename || `OMNI_${cleanCustName}_${cleanOrderNum}_${cleanFolderName}_${dateStr}.xlsx`;
+
+  XLSX.writeFile(wb, filename);
+}
+
+/**
+ * Export all folders and products for a customer to a multi-sheet Excel (.xlsx) workbook
+ */
+export function exportAllFoldersProductsToExcel(
+  folders: ProfileFolder[],
+  customer: { name: string; phone?: string | null; address?: string | null; group?: string | null },
+  customerRmbRate: number = 20.0,
+  freightRate: number = 1.2,
+  freightUnit: 'per_gm' | 'per_kg' = 'per_gm',
+  customFilename?: string
+): void {
+  const wb = XLSX.utils.book_new();
+  const existingSheetNames = new Set<string>();
+
+  // SHEET 1: Master All Products Sheet
+  const masterSheetData: (string | number)[][] = [
+    ['OMNI SOURCING PRO - ALL PRODUCTS MASTER RECORD'],
+    ['Customer Name:', customer.name, 'Phone:', customer.phone || 'N/A'],
+    ['Customer Group:', customer.group || 'Standard', 'Delivery Address:', customer.address || 'N/A'],
+    ['Total Folders:', folders.length, 'Report Date:', new Date().toISOString().slice(0, 10)],
+    ['Base RMB Exchange Rate:', `1 RMB = ৳${customerRmbRate.toFixed(2)} BDT`, 'Freight Rate Applied:', `৳${freightRate}/${freightUnit === 'per_gm' ? 'gm' : 'kg'}`],
+    [],
+    [
+      'SL #',
+      'Folder Ref',
+      'Folder Name',
+      'Item Code',
+      'Product Title',
+      'Platform',
+      'Specifications / Variants / Notes',
+      'Unit Price (RMB ¥)',
+      'Quantity (pcs)',
+      'Total RMB (¥)',
+      'Product Cost (BDT ৳)',
+      'Unit Weight (kg)',
+      'Total Weight (kg)',
+      'Freight Cost (BDT ৳)',
+      'Landed Total (BDT ৳)',
+      'Item Status',
+      'Direct Product Link'
+    ]
+  ];
+
+  let sl = 1;
+  let masterQty = 0;
+  let masterTotalRmb = 0;
+  let masterProductBdt = 0;
+  let masterWeightKg = 0;
+  let masterFreightBdt = 0;
+  let masterLandedBdt = 0;
+
+  folders.forEach((f) => {
+    const fRate = f.exchangeRate > 0 ? f.exchangeRate : customerRmbRate;
+    (f.products || []).forEach((prod) => {
+      const qty = Number(prod.quantity || 1);
+      const unitPriceRmb = Number(prod.priceRmb || 0);
+      const totalRmb = Number(prod.totalRmb || unitPriceRmb * qty);
+      const productBdt = Number(prod.equivalentTk || Math.round(totalRmb * fRate));
+      const unitWeight = Number(prod.weightKg || 0);
+      const totalWeight = unitWeight * qty;
+
+      let lineFreight = 0;
+      if (prod.weightPriceTk !== undefined && prod.weightPriceTk > 0) {
+        lineFreight = Number(prod.weightPriceTk);
+      } else if (unitWeight > 0) {
+        lineFreight = freightUnit === 'per_gm'
+          ? Math.round(totalWeight * 1000 * freightRate)
+          : Math.round(totalWeight * freightRate);
+      }
+
+      const landedTotal = productBdt + lineFreight;
+      const isCancelled = prod.status === 'cancelled';
+
+      if (!isCancelled) {
+        masterQty += qty;
+        masterTotalRmb += totalRmb;
+        masterProductBdt += productBdt;
+        masterWeightKg += totalWeight;
+        masterFreightBdt += lineFreight;
+        masterLandedBdt += landedTotal;
+      }
+
+      masterSheetData.push([
+        sl++,
+        f.orderNumber,
+        f.name,
+        prod.assignedNumber || `${f.orderNumber}-${prod.sequenceNumber}`,
+        prod.name || 'Untitled Product',
+        prod.platform || '1688 / Pinduoduo',
+        prod.note || 'Standard',
+        unitPriceRmb,
+        qty,
+        Math.round(totalRmb * 100) / 100,
+        productBdt,
+        unitWeight > 0 ? Math.round(unitWeight * 1000) / 1000 : 'N/A',
+        totalWeight > 0 ? Math.round(totalWeight * 1000) / 1000 : 'N/A',
+        lineFreight > 0 ? lineFreight : 0,
+        landedTotal,
+        (prod.status || 'active').toUpperCase(),
+        prod.productUrl || ''
+      ]);
+    });
+  });
+
+  masterSheetData.push([]);
+  masterSheetData.push([
+    'MASTER TOTALS',
+    '',
+    '',
+    '',
+    `Total Items: ${sl - 1}`,
+    '',
+    '',
+    '',
+    masterQty,
+    Math.round(masterTotalRmb * 100) / 100,
+    masterProductBdt,
+    '',
+    Math.round(masterWeightKg * 1000) / 1000,
+    masterFreightBdt,
+    masterLandedBdt,
+    '',
+    ''
+  ]);
+
+  const wsMaster = XLSX.utils.aoa_to_sheet(masterSheetData);
+  wsMaster['!cols'] = calculateColumnWidths(masterSheetData);
+  const masterSheetName = sanitizeSheetName('All Products', existingSheetNames);
+  XLSX.utils.book_append_sheet(wb, wsMaster, masterSheetName);
+
+  // SHEET 2+: One sheet per folder
+  folders.forEach((folder) => {
+    const sheetData = buildFolderSheetData(folder, customer, freightRate, freightUnit);
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+    ws['!cols'] = calculateColumnWidths(sheetData);
+    const tabName = sanitizeSheetName(`${folder.orderNumber} - ${folder.name}`.slice(0, 31), existingSheetNames);
+    XLSX.utils.book_append_sheet(wb, ws, tabName);
+  });
+
+  const cleanCustName = customer.name.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20);
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const filename = customFilename || `OMNI_${cleanCustName}_All_Orders_${dateStr}.xlsx`;
+
+  XLSX.writeFile(wb, filename);
+}
+
 

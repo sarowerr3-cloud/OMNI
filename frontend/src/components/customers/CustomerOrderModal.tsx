@@ -456,7 +456,7 @@ export default function CustomerOrderModal({
 
         {/* MODAL BODY (SCROLLABLE WITH INDEPENDENT SECTIONS) */}
         <form onSubmit={handleSubmit} style={{ overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
+
           {/* AI-Powered Smart Screenshot Extractor (1688, AliExpress, Pinduoduo, Taobao) */}
           <div style={{ position: 'relative' }}>
             <div
@@ -920,21 +920,20 @@ export default function CustomerOrderModal({
                     paymentStatus === 'paid'
                       ? 'rgba(16, 185, 129, 0.15)'
                       : paymentStatus === 'partial'
-                      ? 'rgba(245, 158, 11, 0.15)'
-                      : 'rgba(239, 68, 68, 0.15)',
+                        ? 'rgba(245, 158, 11, 0.15)'
+                        : 'rgba(239, 68, 68, 0.15)',
                   color:
                     paymentStatus === 'paid'
                       ? '#10b981'
                       : paymentStatus === 'partial'
-                      ? '#f59e0b'
-                      : '#ef4444',
-                  border: `1px solid ${
-                    paymentStatus === 'paid'
-                      ? 'rgba(16, 185, 129, 0.3)'
-                      : paymentStatus === 'partial'
+                        ? '#f59e0b'
+                        : '#ef4444',
+                  border: `1px solid ${paymentStatus === 'paid'
+                    ? 'rgba(16, 185, 129, 0.3)'
+                    : paymentStatus === 'partial'
                       ? 'rgba(245, 158, 11, 0.3)'
                       : 'rgba(239, 68, 68, 0.3)'
-                  }`,
+                    }`,
                 }}
               >
                 <span
@@ -946,8 +945,8 @@ export default function CustomerOrderModal({
                       paymentStatus === 'paid'
                         ? '#10b981'
                         : paymentStatus === 'partial'
-                        ? '#f59e0b'
-                        : '#ef4444',
+                          ? '#f59e0b'
+                          : '#ef4444',
                   }}
                 />
                 <span>Status: {paymentStatus}</span>
